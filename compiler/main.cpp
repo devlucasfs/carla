@@ -1,9 +1,8 @@
 #include "charset.hpp"
+#include "commands.hpp"
 #include "compiler_outputs.hpp"
-#include "ffi.hpp"
 #include "params.hpp"
 #include "precompiler.hpp"
-#include "tokenizer/scanner.hpp"
 #include "tokenizer/token.hpp"
 #include <chrono>
 #include <cstdlib>
@@ -19,166 +18,15 @@
 #include "parser/parser.hpp"
 #include "morgana/gen.hpp"
 
-#ifdef _WIN32
-# define NIL_FD " > NUL 2>&1 "
-# include <direct.h>
-# define MKDIR(dir) _mkdir(dir)
-#else
-# define NIL_FD " > /dev/null 2>&1 "
-# include <sys/wait.h>
-# include <unistd.h>
-# define MKDIR(dir) mkdir(dir, 0700)
-#endif
-
 int
 main(int argc, char **argv)
 {
-    auto start = std::chrono::high_resolution_clock::now();
-    CompilerOutputs::Log("Starting the compilation!");
-
     int min_arguments = 2;
     if( argc < min_arguments ) CompilerOutputs::Fatal("You need enter with a action. If you don't know the acceptable actions, use: help.");
 
     CompilerParams params = CompilerParams::format(argc, argv);
-    if( params.command == "init" ) {
-        std::string targetDir = std::filesystem::current_path().string() + "/target.eva";
-        std::ofstream target(targetDir, std::ios::out);
-        if(! target.is_open() ) CompilerOutputs::Fatal("Failed to create target.eva");
+    Commands cmd(params);
 
-        target << "@target\n";
-        target << "main: \"src/main.crl\"\n\n";
-        target << "' To enable FFI, set enabled to true and provide a path to the C file.\n";
-        target << "' Remember to export any functions you want to use\n";
+    return cmd.status;
 
-        target << "@ffi\n";
-        target << "enabled: false\n";
-
-        target << "@extensors\n";
-        target << "' You can add extensors from an external git repository!\n";
-        target << "repositories: [ \"git@github.com:Carla-Corp/extensors.git\" ]\n";
-        target.close();
-
-        std::string srcDir = std::filesystem::current_path().string() + "/src";
-        MKDIR(srcDir.c_str());
-
-        std::string srcFile = srcDir + "/main.crl";
-        std::ofstream main(srcFile, std::ios::out);
-
-        main << "@_start\n";
-        main << "void main = () {\n";
-        main << "\tputs \"Hello, world\";\n";
-        main << "}\n";
-
-        main.close();
-
-        CompilerOutputs::Log("Project initialized successfully!\n");
-        return 0;
-    }
-
-    /* checks if the file is accessible */
-    std::ifstream file(params.main, std::ios::binary | std::ios::ate);
-    if(! file.is_open() ) CompilerOutputs::Fatal("Your main file is not valid. Try use -m to define the newest file");
-
-    std::streamsize size = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    std::vector<char> src(size);
-    if(! file.read(src.data(), size) ) CompilerOutputs::Fatal("Your main file is not valid. Try use -m to define the newest file");
-
-    Symt symbols;
-    /* Lexical & Precompiler phase */
-    std::vector<Token> tokens = precompiler(src, size, params);
-
-    /* Parser phase */
-    charset(symbols);
-    load_ffi(symbols, params);
-    auto irNodes = Parser::parse(symbols, tokens);
-
-    /* Code Generation phase */
-    std::string morgIR = generateMorganaCode(irNodes, symbols, false);
-
-    /* Create target directory if it doesn't exist */
-    MKDIR((std::filesystem::current_path().string() + "/target").c_str());
-
-    /* Write Morgana IR to target/output.morg */
-    std::ofstream outFile("target/output.morg");
-    if(! outFile.is_open() ) CompilerOutputs::Fatal("Failed to open output file target/output.morg");
-    outFile << morgIR;
-    outFile.close();
-    if( outFile.fail() ) CompilerOutputs::Fatal("Failed to write Morgana IR to target/output.morg");
-
-    std::filesystem::path absPath = std::filesystem::absolute("target/output.morg");
-    std::filesystem::path absPathBin = std::filesystem::absolute("target/output");
-
-    /* calculate time of the **INTERNAL** compilation process */
-    auto mid = std::chrono::high_resolution_clock::now();
-    auto midMS = std::chrono::duration_cast<std::chrono::microseconds>(mid - start);
-
-    float midSeconds = midMS.count() / 1000000.0;
-    std::stringstream duration;
-    duration << "Total " << Colorizer::BOLD_CYAN << "Carla" << Colorizer::RESET
-             << " compilation proccess time: " << Colorizer::BOLD_GREEN
-             << std::fixed << std::setprecision(2) << midSeconds << "s"
-             << Colorizer::RESET << "\n";
-    CompilerOutputs::Log(duration.str());
-
-    std::cout << Colorizer::DARK_GREY << "└─ " << Colorizer::RESET << "Morgana Object generated "
-              << Colorizer::BOLD << Colorizer::DARK_GREY << Colorizer::BOLD_YELLOW << " (not compiled yet)";
-
-    /* Compile Morgana IR to object file using morgc silently */
-    std::string flgs = ((params.target != "unknown") ? " -o " + params.target : "");
-    if( params.ffi ) flgs += " -ffi -cpath " + std::filesystem::absolute(params.c_path).string();
-    if( params.verbose ) flgs += " -v";
-    std::string morgcCommand = "morgana build -m " + absPath.string() + flgs;
-    if( params.verbose ) CompilerOutputs::Warn("Runnig morgana as " + morgcCommand + "\n");
-    if( std::system(morgcCommand.c_str()) != 0 ) {
-        std::cout << "\n\033[B";
-        CompilerOutputs::ClearCurrentLine();
-        std::cout << "\033[A";
-        return -1;
-    }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    auto ms = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-
-    float seconds = ms.count() / 1000000.0;
-
-    for( int i = 0; i < 3; i++ ) {
-        std::cout << "\033[A";
-        CompilerOutputs::ClearCurrentLine();
-    }
-
-    duration.str("");
-    duration << "Total " << Colorizer::BOLD_CYAN << "Carla" << Colorizer::RESET
-             << " + " << Colorizer::BOLD_RED << "Morgana" << Colorizer::RESET
-             << " compilation proccess time: " << Colorizer::BOLD_YELLOW
-             << std::fixed << std::setprecision(2) << seconds << "s"
-             << Colorizer::RESET << "\n";
-    CompilerOutputs::Log(duration.str());
-    std::cout << Colorizer::DARK_GREY << "└─ " << Colorizer::RESET << "Morgana Object emitted "
-              << Colorizer::BOLD << Colorizer::DARK_GREY << "|" << Colorizer::BOLD_YELLOW << " ./target/output "
-              << Colorizer::DARK_GREY << "(.exe)" << Colorizer::RESET << std::endl;
-
-    if( params.command == "run" ) {
-        std::string runCommand = "./" + std::filesystem::relative(absPathBin.string()).string();
-        std::cout << Colorizer::DARK_GREY << "   └─ " << Colorizer::BOLD_YELLOW << "Running " << Colorizer::RESET << std::endl;
-
-        int result = std::system(runCommand.c_str());
-        int exitCode = 0;
-
-        #ifdef _WIN32
-            exitCode = result;
-        #else
-            if( WIFEXITED(result) ) exitCode = WEXITSTATUS(result);
-            else exitCode = result;
-        #endif
-
-        if( params.verbose ) {
-            CompilerOutputs::ClearCurrentLine();
-            CompilerOutputs::Log("Executable ran and left with " + std::to_string(exitCode) + "\n");
-        }
-    }
-
-    int success_code = 0;
-    return success_code;
 }
