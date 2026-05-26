@@ -47,7 +47,7 @@ std::vector<Token> precompiler(std::vector<char> source, std::streamsize size, C
                         continue;
                     };
 
-                    already_imported_files.push_back(path);
+                    already_imported_files.push_back(path.string());
                     std::ifstream file(path, std::ios::binary | std::ios::ate);
                     if(! file.is_open() )CompilerOutputs::Fatal("Your " + basename + " file is not valid.");
 
