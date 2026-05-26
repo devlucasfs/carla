@@ -6,6 +6,6 @@ cd compiler
 g++ -std=c++17 -g -O0 -fPIC -fpermissive -fexceptions main.cpp \
     -o ../build/carla \
     -I. \
-    -L./libs/eva/x86-64-linux \
+    -L./libs/x86_64 \
     -leva
 cd ..
