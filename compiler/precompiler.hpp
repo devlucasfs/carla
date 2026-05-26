@@ -15,7 +15,7 @@
 
 std::vector<Token> precompiler(std::vector<char> source, std::streamsize size, CompilerParams& param) {
     std::vector<Token> scanner = Scanner::read(source, size);
-    std::vector<std::string> already_imported_files;
+    std::vector<std::string> already_imported_files = {};
 
     while(true) {
         bool changed = false;
