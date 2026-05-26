@@ -20,11 +20,9 @@
 #ifdef _WIN32
 # define NIL_FD " > NUL 2>&1 "
 # define EXE_SUFFIX std::string(".exe")
-# define MKDIR(dir) _mkdir(dir)
 #else
 # define NIL_FD " > /dev/null 2>&1 "
 # define EXE_SUFFIX std::string()
-# define MKDIR(dir) mkdir(dir, 0700)
 #endif
 
 #define COMMANDS_FIELDS \
@@ -81,8 +79,7 @@ bool Commands::create(CompilerParams& params) {
     CompilerOutputs::Log("Creating project...");
 
     std::string folder_path = std::filesystem::current_path().string() + "/" + name;
-    std::string mkdir = "mkdir -p " + folder_path;
-    system(mkdir.c_str());
+    std::filesystem::create_directory(folder_path);
 
     CompilerOutputs::ClearCurrentLine();
     CompilerOutputs::Log("Running init...");
@@ -146,8 +143,8 @@ bool Commands::build(CompilerParams& params) {
     std::string morgIR = generateMorganaCode(irNodes, symbols, false);
 
     /* Create target directory if it doesn't exist */
-    std::string mkdir = "mkdir -p " + std::filesystem::current_path().string() + "/target";
-    system(mkdir.c_str());
+    auto targetDir = std::filesystem::current_path() / "target";
+    std::filesystem::create_directory(targetDir);
 
     /* Write Morgana IR to target/output.morg */
     std::ofstream outFile("target/output.morg");
@@ -231,11 +228,10 @@ bool Commands::init(CompilerParams& params) {
 
     target.close();
 
-    std::string srcDir = std::filesystem::current_path().string() + "/src";
-    std::string cmd = "mkdir " + srcDir + NIL_FD;
-    system(cmd.c_str());
+    auto srcDir = std::filesystem::current_path() / "src";
+    std::filesystem::create_directory(srcDir);
 
-    std::string srcFile = srcDir + "/main.crl";
+    auto srcFile = srcDir / "main.crl";
     std::ofstream main(srcFile, std::ios::out);
 
     main <<
