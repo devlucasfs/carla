@@ -697,30 +697,12 @@ EOF
     echo
     success "🎉 Installation completed successfully!"
     echo
-    info "Directory structure:"
-    echo "  ${INSTALL_BASE}/"
-    echo "  ├── bin/               # Binaries and libraries together"
-    echo "  │   ├── carla"
-    echo "  │   ├── morgana"
-    echo "  │   ├── eva.so"
-    echo "  │   └── runa.so"
-    echo "  └── extensors/         # Empty directory for future extensions"
-    echo
     info "Next steps:"
     echo "  1. Run: source $(get_shell_rc "$(detect_shell)")"
     echo "  2. Or simply restart your terminal"
-    echo "  3. Test with: carla --version && morgana --version"
+    echo "  3. Test with: carla version && morgana version"
     echo
     info "Log file: $LOG_FILE"
-    echo
-    info "Usage examples:"
-    echo "  # For specific architecture/OS"
-    echo "  ./$(basename "$0") aarch64 android"
-    echo "  ./$(basename "$0") x86_64 freebsd"
-    echo "  ./$(basename "$0") armv7 linux"
-    echo
-    info "Or run with auto-detection:"
-    echo "  ./$(basename "$0") auto auto"
 }
 
 # ----------------------------------------------------------------------
