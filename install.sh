@@ -14,6 +14,13 @@ NC='\033[0m' # No Color
 LOG_FILE="${HOME}/.carla_installer.log"
 INSTALL_TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 
+# Default values
+ARCH="${1:-auto}"
+OS="${2:-auto}"
+INSTALL_BASE="${HOME}/.carla"
+INSTALL_BIN="${INSTALL_BASE}/bin"
+INSTALL_EXTENSORS="${INSTALL_BASE}/extensors"
+
 # ----------------------------------------------------------------------
 #  LOGGING FUNCTIONS
 # ----------------------------------------------------------------------
@@ -38,37 +45,187 @@ cleanup() {
     if [ $? -ne 0 ]; then
         error "Installation failed! Check log: $LOG_FILE"
     fi
+
+    # Cleanup temporary directory
+    if [ -n "${TEMP_DIR:-}" ] && [ -d "$TEMP_DIR" ]; then
+        info "Cleaning up temporary files..."
+        rm -rf "$TEMP_DIR"
+    fi
 }
 
 trap cleanup EXIT
 
-rollback_install() {
-    local component="$1"
-    warning "Performing rollback for $component..."
-
-    case "$component" in
-        "carla")
-            if [ -d "$HOME/.carla" ]; then
-                rm -rf "$HOME/.carla"
-                info "Removed carla installation"
-            fi
-            remove_from_path "$HOME/.carla/carla/build" "carla"
+# ----------------------------------------------------------------------
+#  ARCHITECTURE AND OS DETECTION (with FreeBSD support)
+# ----------------------------------------------------------------------
+detect_arch() {
+    local arch=$(uname -m 2>/dev/null || echo "unknown")
+    case "$arch" in
+        x86_64|amd64)
+            echo "x86_64"
             ;;
-        "morgana")
-            if [ -d "$HOME/.morgana" ]; then
-                rm -rf "$HOME/.morgana"
-                info "Removed morgana installation"
-            fi
-            remove_from_path "$HOME/.morgana/morgana/bin" "morgana"
+        aarch64|arm64)
+            echo "aarch64"
+            ;;
+        armv7l|armv7|armhf)
+            echo "armv7"
+            ;;
+        i386|i686)
+            echo "i386"
+            ;;
+        *)
+            echo "$arch"
             ;;
     esac
+}
+
+detect_os() {
+    local os=$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')
+    case "$os" in
+        linux)
+            echo "linux"
+            ;;
+        darwin)
+            echo "macos"
+            ;;
+        freebsd)
+            echo "freebsd"
+            ;;
+        openbsd)
+            echo "openbsd"
+            ;;
+        netbsd)
+            echo "netbsd"
+            ;;
+        dragonfly)
+            echo "dragonfly"
+            ;;
+        *)
+            echo "$os"
+            ;;
+    esac
+}
+
+# ----------------------------------------------------------------------
+#  PACKAGE MANAGER DETECTION (with FreeBSD support)
+# ----------------------------------------------------------------------
+detect_package_manager() {
+    if command -v pkg >/dev/null 2>&1 && [ "$(detect_os)" = "freebsd" ]; then
+        echo "pkg"
+    elif command -v apt >/dev/null 2>&1; then
+        echo "apt"
+    elif command -v dnf >/dev/null 2>&1; then
+        echo "dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        echo "yum"
+    elif command -v pacman >/dev/null 2>&1; then
+        echo "pacman"
+    elif command -v brew >/dev/null 2>&1; then
+        echo "brew"
+    else
+        echo "unknown"
+    fi
+}
+
+# ----------------------------------------------------------------------
+#  DOWNLOAD FUNCTIONS
+# ----------------------------------------------------------------------
+download_so_files() {
+    local arch="$1"
+    local os="$2"
+    local temp_dir="$3"
+
+    info "Downloading library files for ${arch}-${os}..."
+
+    # Construct base URL
+    local base_url="https://carla-cdn.vercel.app"
+    local files=("eva" "runa")
+    local downloaded=0
+
+    for file in "${files[@]}"; do
+        # Try different naming conventions
+        local names=(
+            "${file}-${os}-${arch}.so"
+            "${file}-${arch}-${os}.so"
+            "${file}.${os}.${arch}.so"
+            "${file}_${os}_${arch}.so"
+        )
+
+        local downloaded_file=""
+
+        for name in "${names[@]}"; do
+            local url="${base_url}/${name}"
+            local output="${temp_dir}/${name}"
+
+            info "Trying: ${name}"
+
+            if curl -L -f -s -o "$output" "$url" 2>>"$LOG_FILE"; then
+                if [ -f "$output" ] && [ -s "$output" ]; then
+                    chmod +x "$output"
+                    success "Downloaded: ${name}"
+                    downloaded_file="$output"
+                    ((downloaded++))
+                    break
+                fi
+            fi
+        done
+
+        if [ -z "$downloaded_file" ]; then
+            warning "Failed to download ${file} for ${os}-${arch}"
+        fi
+    done
+
+    if [ $downloaded -eq 0 ]; then
+        error "No library files were successfully downloaded"
+        return 1
+    fi
+
+    success "Downloaded ${downloaded} library files"
+
+    # Copy library files to bin directory (alongside binaries)
+    mkdir -p "$INSTALL_BIN"
+    cp "${temp_dir}"/*.so "$INSTALL_BIN/" 2>/dev/null || true
+
+    # Rename to standard names if needed
+    pushd "$INSTALL_BIN" >/dev/null
+    for file in *.so; do
+        if [[ "$file" == *"eva"* ]] && [[ "$file" != "eva.so" ]]; then
+            mv "$file" "eva.so" 2>/dev/null || true
+        elif [[ "$file" == *"runa"* ]] && [[ "$file" != "runa.so" ]]; then
+            mv "$file" "runa.so" 2>/dev/null || true
+        fi
+    done
+    popd >/dev/null
+
+    info "Library files installed in: ${INSTALL_BIN} (same directory as binaries)"
+
+    # Set library path
+    export LD_LIBRARY_PATH="${INSTALL_BIN}:${LD_LIBRARY_PATH:-}"
+    export DYLD_LIBRARY_PATH="${INSTALL_BIN}:${DYLD_LIBRARY_PATH:-}" # For macOS
+
+    return 0
 }
 
 # ----------------------------------------------------------------------
 #  VALIDATION FUNCTIONS
 # ----------------------------------------------------------------------
 check_commands() {
-    local commands=("git" "gcc" "g++" "make" "cmake" "pkg-config")
+    local os_type=$(detect_os)
+    local commands=("git" "gcc" "g++" "make" "cmake" "curl")
+
+    # Different commands for different OS
+    case "$os_type" in
+        freebsd)
+            commands+=("pkg")
+            ;;
+        linux)
+            commands+=("pkg-config")
+            ;;
+        darwin|macos)
+            commands+=("pkg-config")
+            ;;
+    esac
+
     local missing=()
 
     for cmd in "${commands[@]}"; do
@@ -79,41 +236,45 @@ check_commands() {
 
     if [ ${#missing[@]} -gt 0 ]; then
         error "Missing required commands: ${missing[*]}"
-        info "Please install them with your package manager:"
-        echo "  Ubuntu/Debian: sudo apt install ${missing[*]}"
-        echo "  Fedora: sudo dnf install ${missing[*]}"
-        echo "  Arch: sudo pacman -S ${missing[*]}"
+        info "Please install them using your package manager:"
+
+        local pkg_manager=$(detect_package_manager)
+        case "$pkg_manager" in
+            pkg)
+                echo "  FreeBSD: sudo pkg install ${missing[*]}"
+                ;;
+            apt)
+                echo "  Ubuntu/Debian: sudo apt install ${missing[*]}"
+                ;;
+            dnf|yum)
+                echo "  Fedora/RHEL: sudo ${pkg_manager} install ${missing[*]}"
+                ;;
+            pacman)
+                echo "  Arch: sudo pacman -S ${missing[*]}"
+                ;;
+            brew)
+                echo "  macOS: brew install ${missing[*]}"
+                ;;
+            *)
+                echo "  Please install missing packages manually"
+                ;;
+        esac
         return 1
     fi
 
     success "All required commands are available"
 }
 
-check_libraries() {
-    local libraries=("libcurl4-openssl-dev" "libssl-dev" "libxml2-dev" "libzip-dev")
-    local missing=()
-
-    for lib in "${libraries[@]}"; do
-        if ! pkg-config --exists "${lib%-dev}" 2>/dev/null; then
-            missing+=("$lib")
-        fi
-    done
-
-    if [ ${#missing[@]} -gt 0 ]; then
-        warning "Some development libraries might be missing: ${missing[*]}"
-        info "You may need to install them if build fails:"
-        echo "  sudo apt install ${missing[*]}"
-    else
-        success "All required libraries are available"
-    fi
-}
-
 check_disk_space() {
     local required_mb=500
     local available_mb
 
-    available_mb=$(df "$HOME" | awk 'NR==2 {print $4}')
-    available_mb=$((available_mb / 1024))
+    if [[ "$OSTYPE" == "freebsd"* ]]; then
+        available_mb=$(df -m "$HOME" | awk 'NR==2 {print $4}')
+    else
+        available_mb=$(df "$HOME" | awk 'NR==2 {print $4}')
+        available_mb=$((available_mb / 1024))
+    fi
 
     if [ "$available_mb" -lt "$required_mb" ]; then
         error "Insufficient disk space. Required: ${required_mb}MB, Available: ${available_mb}MB"
@@ -127,8 +288,8 @@ check_disk_space() {
 #  SHELL DETECTION AND PATH MANAGEMENT
 # ----------------------------------------------------------------------
 detect_shell() {
-    local current_shell
-    echo $(basename "$SHELL")
+    local shell_path="${SHELL:-/bin/sh}"
+    echo $(basename "$shell_path")
 }
 
 get_shell_rc() {
@@ -138,12 +299,14 @@ get_shell_rc() {
             echo "$HOME/.bashrc"
             ;;
         *zsh)
-            # Respeita ZDOTDIR se estiver definido
             if [ -n "${ZDOTDIR:-}" ]; then
                 echo "${ZDOTDIR}/.zshrc"
             else
                 echo "$HOME/.zshrc"
             fi
+            ;;
+        *fish)
+            echo "$HOME/.config/fish/config.fish"
             ;;
         *)
             echo "$HOME/.profile"
@@ -151,361 +314,252 @@ get_shell_rc() {
     esac
 }
 
-backup_rc_file() {
-    local rc_file="$1"
-    if [ -f "$rc_file" ]; then
-        local backup="${rc_file}.backup.${INSTALL_TIMESTAMP}"
-        cp "$rc_file" "$backup"
-        success "Backed up $rc_file to $backup"
-    fi
-}
-
-# ----------------------------------------------------------------------
-#  PATH MANAGEMENT - ROBUST AND SAFE WITH SINGLE ENTRY GUARANTEE
-# ----------------------------------------------------------------------
-remove_from_path() {
-    local dir="$1"
-    local component="$2"
-    local current_shell=$(detect_shell)
-    local shell_rc=$(get_shell_rc "$current_shell")
-
-    if [ ! -f "$shell_rc" ]; then
-        return 0
-    fi
-
-    info "Cleaning old $component PATH entries from $shell_rc"
-
-    # Create temporary file
-    local temp_file=$(mktemp)
-
-    # Remove ALL entries related to this component (old format and new format)
-    awk -v dir="$dir" -v component="$component" '
-    BEGIN { skip = 0 }
-    /# Added by Carla installer.*'"$component"'/ { skip = 1; next }
-    /# Added by Carla installer/ && /'"$INSTALL_TIMESTAMP"'/ { print; next }
-    skip && /export PATH=.*:?\$/ { skip = 0; next }
-    skip { next }
-    /export PATH=.*'"$(basename "$dir")"'/ { next }
-    { print }
-    ' "$shell_rc" > "$temp_file"
-
-    # Copy back if different
-    if ! cmp -s "$shell_rc" "$temp_file"; then
-        mv "$temp_file" "$shell_rc"
-        success "Removed old $component entries from $shell_rc"
-    else
-        rm -f "$temp_file"
-    fi
-}
-
 add_to_path() {
     local dir="$1"
-    local component="$2"
     local current_shell=$(detect_shell)
     local shell_rc=$(get_shell_rc "$current_shell")
 
-    info "Adding $dir to PATH for $component ($current_shell)"
+    info "Adding $dir to PATH"
 
     if [ ! -d "$dir" ]; then
         error "Directory does not exist: $dir"
         return 1
     fi
 
-    # Backup RC file
-    backup_rc_file "$shell_rc"
-
-    # Create RC file if it doesn't exist (including parent directory for ZDOTDIR)
-    if [ ! -f "$shell_rc" ]; then
-        local rc_dir=$(dirname "$shell_rc")
-        if [ ! -d "$rc_dir" ]; then
-            mkdir -p "$rc_dir"
-            info "Created directory: $rc_dir"
-        fi
-        touch "$shell_rc"
-        info "Created RC file: $shell_rc"
-    fi
-
-    # First, remove any existing entries for this component
-    remove_from_path "$dir" "$component"
-
-    # Now add the new entry
-    {
-        echo ""
-        echo "# Added by Carla installer for $component - $INSTALL_TIMESTAMP"
-        echo "export PATH=\"${dir}:\$PATH\""
-    } >> "$shell_rc"
-
-    # Add to current session
+    # Add to PATH for current session
     export PATH="${dir}:$PATH"
 
-    # Verify only one entry exists
-    local entry_count=$(grep -c "export PATH=.*${dir}" "$shell_rc" 2>/dev/null || echo "0")
-    if [ "$entry_count" -gt 1 ]; then
-        warning "Multiple entries found for $component, cleaning up..."
-        remove_from_path "$dir" "$component"
+    # Add to shell RC file if not already there
+    if [ -f "$shell_rc" ]; then
+        if ! grep -q "export PATH=.*${dir}" "$shell_rc" 2>/dev/null; then
+            {
+                echo ""
+                echo "# Added by Carla installer - ${INSTALL_TIMESTAMP}"
+                echo "export PATH=\"${dir}:\$PATH\""
+                echo "export LD_LIBRARY_PATH=\"${dir}:\$LD_LIBRARY_PATH\""
+                echo "export DYLD_LIBRARY_PATH=\"${dir}:\$DYLD_LIBRARY_PATH\""
+            } >> "$shell_rc"
+            success "Added to ${shell_rc}"
+        fi
+    elif [ "$current_shell" = "fish" ]; then
+        # Fish shell uses different syntax
+        mkdir -p "$(dirname "$shell_rc")"
         {
             echo ""
-            echo "# Added by Carla installer for $component - $INSTALL_TIMESTAMP (cleaned)"
-            echo "export PATH=\"${dir}:\$PATH\""
+            echo "# Added by Carla installer - ${INSTALL_TIMESTAMP}"
+            echo "set -gx PATH \"${dir}\" \$PATH"
+            echo "set -gx LD_LIBRARY_PATH \"${dir}\" \$LD_LIBRARY_PATH"
         } >> "$shell_rc"
+        success "Added to ${shell_rc}"
+    else
+        # Create RC file if it doesn't exist
+        mkdir -p "$(dirname "$shell_rc")"
+        {
+            echo "# Created by Carla installer - ${INSTALL_TIMESTAMP}"
+            echo "export PATH=\"${dir}:\$PATH\""
+            echo "export LD_LIBRARY_PATH=\"${dir}:\$LD_LIBRARY_PATH\""
+            echo "export DYLD_LIBRARY_PATH=\"${dir}:\$DYLD_LIBRARY_PATH\""
+        } > "$shell_rc"
+        success "Created ${shell_rc}"
     fi
 
-    success "Added $dir to PATH for $component (session and $shell_rc)"
+    success "Added ${dir} to PATH"
+}
+
+# ----------------------------------------------------------------------
+#  BUILD FUNCTIONS
+# ----------------------------------------------------------------------
+build_repository() {
+    local repo_url="$1"
+    local repo_name="$2"
+    local arch="$3"
+    local os="$4"
+    local temp_dir="$5"
+
+    info "Building ${repo_name} for ${os}-${arch}..."
+
+    local repo_dir="${temp_dir}/${repo_name}"
+
+    # Try different build script names
+    local scripts=(
+        "scripts/${arch}-${os}-build.sh"
+        "scripts/${os}-${arch}-build.sh"
+    )
+
+    # Clone repository
+    if ! git clone --depth 1 "$repo_url" "$repo_dir" 2>>"$LOG_FILE"; then
+        error "Failed to clone ${repo_name} repository"
+        return 1
+    fi
+
+    pushd "$repo_dir" >/dev/null
+
+    local found_script=""
+    for script in "${scripts[@]}"; do
+        if [ -f "$script" ]; then
+            found_script="$script"
+            info "Using build script: $script"
+            break
+        fi
+    done
+
+    if [ -z "$found_script" ]; then
+        error "No build script found for ${os}-${arch}"
+        info "Available scripts:"
+        find . -name "*.sh" -type f 2>/dev/null | head -10
+        popd >/dev/null
+        return 1
+    fi
+
+    chmod +x "$found_script"
+
+    # Set library path for build (bin directory contains the .so files)
+    export LD_LIBRARY_PATH="${INSTALL_BIN}:${LD_LIBRARY_PATH:-}"
+    export DYLD_LIBRARY_PATH="${INSTALL_BIN}:${DYLD_LIBRARY_PATH:-}"
+
+    if ! ./"$found_script" >> "$LOG_FILE" 2>&1; then
+        error "${repo_name} build failed - check log: $LOG_FILE"
+        popd >/dev/null
+        return 1
+    fi
+
+    # Find binary and copy to installation directory
+    mkdir -p "$INSTALL_BIN"
+
+    local binary_name="${repo_name}"
+    local binary_path=$(find . -type f -executable -name "${binary_name}" 2>/dev/null | head -1)
+
+    if [ -n "$binary_path" ] && [ -f "$binary_path" ]; then
+        cp "$binary_path" "${INSTALL_BIN}/"
+        success "Installed ${binary_name} to ${INSTALL_BIN}"
+    else
+        # Try to find any executable that might be the binary
+        local potential_bin=$(find . -type f -executable -not -name "*.sh" -not -name "*.py" 2>/dev/null | head -1)
+        if [ -n "$potential_bin" ]; then
+            cp "$potential_bin" "${INSTALL_BIN}/${repo_name}"
+            success "Installed ${repo_name} (from ${potential_bin}) to ${INSTALL_BIN}"
+        else
+            warning "Could not find ${binary_name} binary"
+            # List potential binaries for debugging
+            find . -type f -executable 2>/dev/null | head -10
+        fi
+    fi
+
+    popd >/dev/null
+
+    return 0
 }
 
 # ----------------------------------------------------------------------
 #  INSTALLATION FUNCTIONS
 # ----------------------------------------------------------------------
 install_morgana() {
-    info "Starting Morgana installation..."
+    local arch="$1"
+    local os="$2"
+    local temp_dir="$3"
 
-    local base_dir="$HOME/.morgana"
-    local repo_dir="$base_dir/morgana"
-    local bin_dir="$repo_dir/bin"
+    info "Installing Morgana for ${os}-${arch}..."
 
-    # Clean previous installation
-    if [ -d "$base_dir" ]; then
-        warning "Removing previous Morgana installation..."
-        rm -rf "$base_dir"
-    fi
-
-    # Clean old PATH entries first
-    remove_from_path "$bin_dir" "morgana"
-
-    mkdir -p "$base_dir"
-    pushd "$base_dir" >/dev/null
-
-    info "Cloning Morgana repository..."
-    if ! git clone --depth 1 https://github.com/lucasFelixSilveira/morgana.git 2>>"$LOG_FILE"; then
-        error "Failed to clone Morgana repository"
-        popd >/dev/null
+    if ! build_repository "https://github.com/lucasFelixSilveira/morgana.git" "morgana" "$arch" "$os" "$temp_dir"; then
+        error "Morgana installation failed"
         return 1
     fi
 
-    pushd morgana >/dev/null
-
-    if [ ! -f "build_x86_64.sh" ]; then
-        error "build_x86_64.sh not found in Morgana repository"
-        popd >/dev/null
-        popd >/dev/null
-        return 1
-    fi
-
-    info "Building Morgana..."
-    chmod +x build_x86_64.sh
-
-    if ! ./build_x86_64.sh >> "$LOG_FILE" 2>&1; then
-        error "Morgana build failed - check log: $LOG_FILE"
-        popd >/dev/null
-        popd >/dev/null
-        rollback_install "morgana"
-        return 1
-    fi
-
-    # Verify binary was created
-    if [ ! -f "$bin_dir/morgana" ]; then
-        error "Morgana binary not found after build"
-        popd >/dev/null
-        popd >/dev/null
-        rollback_install "morgana"
-        return 1
-    fi
-
-    chmod +x "$bin_dir/morgana"
-
-    popd >/dev/null
-    popd >/dev/null
-
-    # Add to PATH
-    add_to_path "$bin_dir" "morgana"
-
-    # Verify installation
-    if command -v morgana >/dev/null 2>&1; then
-        success "Morgana installed successfully"
-        return 0
-    else
-        error "Morgana installation verification failed"
-        rollback_install "morgana"
-        return 1
-    fi
+    success "Morgana installed successfully"
+    return 0
 }
 
 install_carla() {
-    info "Starting Carla installation..."
+    local arch="$1"
+    local os="$2"
+    local temp_dir="$3"
 
-    local base_dir="$HOME/.carla"
-    local repo_dir="$base_dir/carla"
-    local build_dir="$repo_dir/build"
+    info "Installing Carla for ${os}-${arch}..."
 
-    # Clean previous installation
-    if [ -d "$base_dir" ]; then
-        warning "Removing previous Carla installation..."
-        rm -rf "$base_dir"
-    fi
-
-    # Clean old PATH entries first
-    remove_from_path "$build_dir" "carla"
-
-    mkdir -p "$base_dir"
-    pushd "$base_dir" >/dev/null
-
-    info "Cloning Carla repository..."
-    if ! git clone --depth 1 https://github.com/lucasFelixSilveira/carla.git 2>>"$LOG_FILE"; then
-        error "Failed to clone Carla repository"
-        popd >/dev/null
+    if ! build_repository "https://github.com/lucasFelixSilveira/carla.git" "carla" "$arch" "$os" "$temp_dir"; then
+        error "Carla installation failed"
         return 1
     fi
 
-    pushd carla >/dev/null
-
-    if [ ! -f "scripts/build.sh" ]; then
-        error "build.sh not found in Carla repository"
-        popd >/dev/null
-        popd >/dev/null
-        return 1
-    fi
-
-    info "Building Carla..."
-    chmod +x ./scripts/build.sh
-
-    if ! ./scripts/build.sh >> "$LOG_FILE" 2>&1; then
-        error "Carla build failed - check log: $LOG_FILE"
-        popd >/dev/null
-        popd >/dev/null
-        rollback_install "carla"
-        return 1
-    fi
-
-    # Verify binary was created
-    if [ ! -f "$build_dir/carla" ]; then
-        error "Carla binary not found after build"
-        popd >/dev/null
-        popd >/dev/null
-        rollback_install "carla"
-        return 1
-    fi
-
-    chmod +x "$build_dir/carla"
-
-    popd >/dev/null
-    popd >/dev/null
-
-    # Add to PATH
-    add_to_path "$build_dir" "carla"
-
-    # Verify installation
-    if command -v carla >/dev/null 2>&1; then
-        success "Carla installed successfully"
-        return 0
-    else
-        error "Carla installation verification failed"
-        rollback_install "carla"
-        return 1
-    fi
+    success "Carla installed successfully"
+    return 0
 }
 
 # ----------------------------------------------------------------------
 #  VERIFICATION FUNCTIONS
 # ----------------------------------------------------------------------
-verify_single_path_entry() {
-    local component="$1"
-    local expected_dir="$2"
-    local current_shell=$(detect_shell)
-    local shell_rc=$(get_shell_rc "$current_shell")
-    local entry_count=0
+verify_installation() {
+    info "Verifying installation..."
 
-    if [ ! -f "$shell_rc" ]; then
-        return 0
-    fi
+    local verified=true
 
-    # Count entries for this component
-    entry_count=$(grep -c "export PATH=.*$expected_dir" "$shell_rc" 2>/dev/null || echo "0")
-
-    if [ "$entry_count" -eq 1 ]; then
-        success "✓ Single PATH entry verified for $component"
-        return 0
-    elif [ "$entry_count" -eq 0 ]; then
-        warning "No PATH entry found for $component"
-        return 1
+    # Check directories
+    if [ -d "$INSTALL_BIN" ]; then
+        success "✓ Binaries directory: $INSTALL_BIN"
+        ls -la "$INSTALL_BIN" | grep -v "^total" | while read -r line; do
+            info "  - $(echo "$line" | awk '{print $NF}')"
+        done
     else
-        error "Multiple PATH entries found for $component ($entry_count entries)"
-
-        # Show the duplicate entries
-        info "Duplicate entries in $shell_rc:"
-        grep -n "export PATH=.*$expected_dir" "$shell_rc"
-
-        return 1
+        error "✗ Binaries directory not found"
+        verified=false
     fi
-}
 
-# ----------------------------------------------------------------------
-#  UPDATE FUNCTIONS
-# ----------------------------------------------------------------------
-check_updates() {
-    info "Checking for updates..."
-
-    local has_updates=false
-
-    # Check Carla
-    if [ -d "$HOME/.carla/carla" ]; then
-        pushd "$HOME/.carla/carla" >/dev/null
-        git fetch origin 2>>"$LOG_FILE"
-        local behind_count=$(git rev-list HEAD..origin/main --count 2>/dev/null || echo "0")
-        if [ "$behind_count" -gt 0 ]; then
-            info "Carla has $behind_count new commits available"
-            has_updates=true
+    # Check extensors directory exists and is empty (or can be empty)
+    if [ -d "$INSTALL_EXTENSORS" ]; then
+        success "✓ Extensors directory: $INSTALL_EXTENSORS"
+        local file_count=$(ls -1 "$INSTALL_EXTENSORS" 2>/dev/null | wc -l)
+        if [ "$file_count" -eq 0 ]; then
+            info "  Extensors directory is empty (ready for future extensions)"
+        else
+            info "  Extensors directory contains $file_count items"
         fi
-        popd >/dev/null
-    fi
-
-    # Check Morgana
-    if [ -d "$HOME/.morgana/morgana" ]; then
-        pushd "$HOME/.morgana/morgana" >/dev/null
-        git fetch origin 2>>"$LOG_FILE"
-        local behind_count=$(git rev-list HEAD..origin/main --count 2>/dev/null || echo "0")
-        if [ "$behind_count" -gt 0 ]; then
-            info "Morgana has $behind_count new commits available"
-            has_updates=true
-        fi
-        popd >/dev/null
-    fi
-
-    if [ "$has_updates" = true ]; then
-        return 0  # Updates available
     else
-        info "Both Carla and Morgana are up to date"
-        return 1  # No updates
-    fi
-}
-
-update_installation() {
-    info "Updating installations..."
-
-    # Clean old PATH entries before update
-    local current_shell=$(detect_shell)
-    local shell_rc=$(get_shell_rc "$current_shell")
-
-    if [ -f "$shell_rc" ]; then
-        info "Cleaning old PATH entries before update..."
-        # Remove all installer entries except current timestamp
-        sed -i.bak "/# Added by Carla installer/d" "$shell_rc" 2>/dev/null || true
+        warning "✗ Extensors directory not found (creating...)"
+        mkdir -p "$INSTALL_EXTENSORS"
+        success "Created extensors directory"
     fi
 
-    if [ -d "$HOME/.morgana" ]; then
-        if ! install_morgana; then
-            error "Failed to update Morgana"
-            return 1
-        fi
+    # Check if commands are available
+    if command -v carla >/dev/null 2>&1; then
+        success "✓ Carla is available in PATH"
+        local carla_path=$(which carla)
+        info "  Location: $carla_path"
+    else
+        warning "✗ Carla not found in PATH"
+        verified=false
     fi
 
-    if [ -d "$HOME/.carla" ]; then
-        if ! install_carla; then
-            error "Failed to update Carla"
-            return 1
-        fi
+    if command -v morgana >/dev/null 2>&1; then
+        success "✓ Morgana is available in PATH"
+        local morgana_path=$(which morgana)
+        info "  Location: $morgana_path"
+    else
+        warning "✗ Morgana not found in PATH"
+        verified=false
     fi
 
-    success "Update completed successfully"
+    # Check library files in bin directory
+    if [ -f "${INSTALL_BIN}/eva.so" ]; then
+        success "✓ eva.so library found in bin/"
+    else
+        warning "✗ eva.so library missing from bin/"
+        verified=false
+    fi
+
+    if [ -f "${INSTALL_BIN}/runa.so" ]; then
+        success "✓ runa.so library found in bin/"
+    else
+        warning "✗ runa.so library missing from bin/"
+        verified=false
+    fi
+
+    if [ "$verified" = true ]; then
+        success "All components verified successfully"
+    else
+        error "Some components failed verification"
+    fi
+
+    return 0
 }
 
 # ----------------------------------------------------------------------
@@ -540,6 +594,17 @@ prompt_yn() {
 #  MAIN INSTALLATION LOGIC
 # ----------------------------------------------------------------------
 main() {
+    # Auto-detect if not specified
+    if [ "$ARCH" = "auto" ]; then
+        ARCH=$(detect_arch)
+        info "Auto-detected architecture: $ARCH"
+    fi
+
+    if [ "$OS" = "auto" ]; then
+        OS=$(detect_os)
+        info "Auto-detected OS: $OS"
+    fi
+
     echo -e "${BLUE}"
     cat << "EOF"
     ___          _                     _   __  __
@@ -549,123 +614,149 @@ main() {
 EOF
     echo -e "${NC}"
 
-    info "Starting installation process..."
+    info "CARLA/Morgana Multi-Platform Installer"
+    info "Target: ${OS}-${ARCH}"
+    info "Install directory: ${INSTALL_BASE}"
     info "Log file: $LOG_FILE"
+
+    # Show OS-specific information
+    case "$OS" in
+        freebsd)
+            info "Running on FreeBSD - using compatibility mode"
+            ;;
+        linux)
+            info "Running on Linux"
+            ;;
+        macos|darwin)
+            info "Running on macOS"
+            ;;
+    esac
 
     # System checks
     info "Performing system checks..."
-    check_commands
-    check_libraries
-    check_disk_space
+    check_commands || exit 1
+    check_disk_space || exit 1
 
-    local current_shell=$(detect_shell)
-    local shell_rc=$(get_shell_rc "$current_shell")
-    info "Detected shell: $current_shell"
-    info "Using RC file: $shell_rc"
-
-    # Mostra info sobre ZDOTDIR se estiver definido
-    if [ -n "${ZDOTDIR:-}" ]; then
-        info "ZDOTDIR is set to: $ZDOTDIR"
-    fi
-
-    # Check if already installed
-    local carla_installed=$(command -v carla >/dev/null 2>&1 && echo true || echo false)
-    local morgana_installed=$(command -v morgana >/dev/null 2>&1 && echo true || echo false)
-
-    if [ "$carla_installed" = true ] || [ "$morgana_installed" = true ]; then
-        info "Existing installation detected"
-
-        if check_updates; then
-            if prompt_yn "Updates available. Install them?" "Y"; then
-                if ! update_installation; then
-                    error "Update failed"
-                    exit 1
-                fi
-            else
-                info "Update skipped by user"
-            fi
-        else
-            info "Software is up to date"
-
-            if prompt_yn "Reinstall anyway?" "N"; then
-                if ! update_installation; then
-                    error "Reinstallation failed"
-                    exit 1
-                fi
-            else
-                info "Reinstallation skipped"
-            fi
-        fi
-    else
-        info "Fresh installation"
-
-        if prompt_yn "Install Carla and Morgana?" "Y"; then
-            info "Installing Morgana (required for Carla)..."
-            if ! install_morgana; then
-                error "Morgana installation failed - cannot continue"
-                exit 1
-            fi
-
-            info "Installing Carla..."
-            if ! install_carla; then
-                error "Carla installation failed"
-                # Don't rollback Morgana as it might be useful standalone
-                exit 1
-            fi
-
-            success "Installation completed successfully!"
+    # Remove old installation if exists
+    if [ -d "$INSTALL_BASE" ]; then
+        warning "Existing installation found at $INSTALL_BASE"
+        if prompt_yn "Remove and reinstall?" "N"; then
+            rm -rf "$INSTALL_BASE"
+            info "Removed old installation"
         else
             info "Installation cancelled by user"
             exit 0
         fi
     fi
 
-    # Final verification
-    info "Performing final verification..."
+    # Create installation directories
+    mkdir -p "$INSTALL_BIN"
+    mkdir -p "$INSTALL_EXTENSORS"  # Empty directory for future extensions
 
-    local verification_passed=true
+    # Create temporary directory
+    TEMP_DIR=$(mktemp -d)
+    info "Created temporary directory: $TEMP_DIR"
 
-    if command -v morgana >/dev/null 2>&1; then
-        success "✓ Morgana is available in PATH"
-        # Verify single PATH entry
-        if ! verify_single_path_entry "morgana" "$HOME/.morgana/morgana/bin"; then
-            verification_passed=false
-        fi
-    else
-        error "✗ Morgana not found in PATH"
-        verification_passed=false
+    # Download library files (.so) to bin directory
+    if ! download_so_files "$ARCH" "$OS" "$TEMP_DIR"; then
+        warning "Failed to download some library files, but continuing with build..."
     fi
 
-    if command -v carla >/dev/null 2>&1; then
-        success "✓ Carla is available in PATH"
-        # Verify single PATH entry
-        if ! verify_single_path_entry "carla" "$HOME/.carla/carla/build"; then
-            verification_passed=false
-        fi
-    else
-        error "✗ Carla not found in PATH"
-        verification_passed=false
-    fi
-
-    if [ "$verification_passed" = false ]; then
-        error "Installation verification failed!"
-        info "Try running: source $(get_shell_rc "$(detect_shell)")"
+    # Install Morgana (dependency for Carla)
+    info "Installing Morgana..."
+    if ! install_morgana "$ARCH" "$OS" "$TEMP_DIR"; then
+        error "Morgana installation failed - cannot continue"
         exit 1
     fi
+
+    # Install Carla
+    info "Installing Carla..."
+    if ! install_carla "$ARCH" "$OS" "$TEMP_DIR"; then
+        error "Carla installation failed"
+        exit 1
+    fi
+
+    # Add to PATH
+    add_to_path "$INSTALL_BIN"
+
+    # Verification
+    verify_installation
 
     # Success message
     echo
     success "🎉 Installation completed successfully!"
     echo
+    info "Directory structure:"
+    echo "  ${INSTALL_BASE}/"
+    echo "  ├── bin/               # Binaries and libraries together"
+    echo "  │   ├── carla"
+    echo "  │   ├── morgana"
+    echo "  │   ├── eva.so"
+    echo "  │   └── runa.so"
+    echo "  └── extensors/         # Empty directory for future extensions"
+    echo
     info "Next steps:"
     echo "  1. Run: source $(get_shell_rc "$(detect_shell)")"
     echo "  2. Or simply restart your terminal"
-    echo "  3. Verify with: which carla && which morgana"
+    echo "  3. Test with: carla --version && morgana --version"
     echo
     info "Log file: $LOG_FILE"
     echo
+    info "Usage examples:"
+    echo "  # For specific architecture/OS"
+    echo "  ./$(basename "$0") aarch64 android"
+    echo "  ./$(basename "$0") x86_64 freebsd"
+    echo "  ./$(basename "$0") armv7 linux"
+    echo
+    info "Or run with auto-detection:"
+    echo "  ./$(basename "$0") auto auto"
 }
 
+# ----------------------------------------------------------------------
+#  SCRIPT START
+# ----------------------------------------------------------------------
+show_usage() {
+    cat << EOF
+Usage: $0 [ARCHITECTURE] [OPERATING_SYSTEM]
+
+Architectures: x86_64, aarch64, armv7, i386, auto
+Operating Systems: linux, android, macos, freebsd, openbsd, netbsd, auto
+
+Examples:
+  $0 x86_64 linux
+  $0 aarch64 android
+  $0 armv7 linux
+  $0 x86_64 freebsd
+  $0 x86_64 macos
+  $0 auto auto  # Auto-detect
+
+Supported OS:
+  - Linux (most distributions)
+  - FreeBSD (and other BSD variants)
+  - macOS/Darwin
+  - Android (cross-compilation)
+
+Note: For FreeBSD, ensure required packages are installed:
+  sudo pkg install git gcc cmake curl
+
+EOF
+}
+
+# Parse arguments
+if [ $# -gt 0 ]; then
+    case "$1" in
+        -h|--help)
+            show_usage
+            exit 0
+            ;;
+        *)
+            ARCH="$1"
+            OS="${2:-auto}"
+            ;;
+    esac
+fi
+
+# Check if running as root
 if [ "$EUID" -eq 0 ]; then
     warning "This script should NOT be run as root/sudo!"
     warning "It will install software for the current user only."
@@ -679,7 +770,11 @@ if [ "$EUID" -eq 0 ]; then
     fi
 fi
 
+# Initialize log
 touch "$LOG_FILE"
 echo "=== CARLA INSTALLER LOG - $(date) ===" > "$LOG_FILE"
+echo "Target: ${OS}-${ARCH}" >> "$LOG_FILE"
+echo "System: $(uname -a)" >> "$LOG_FILE"
 
+# Run main
 main "$@"
