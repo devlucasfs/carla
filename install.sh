@@ -145,10 +145,12 @@ download_so_files() {
     for file in "${files[@]}"; do
         # Try different naming conventions
         local names=(
+            "lib${file}-${os}-${arch}.so"
+            "lib${file}-${arch}-${os}.so"
+            "lib${file}.${os}.${arch}.so"
+            "lib${file}_${os}_${arch}.so"
             "${file}-${os}-${arch}.so"
             "${file}-${arch}-${os}.so"
-            "${file}.${os}.${arch}.so"
-            "${file}_${os}_${arch}.so"
         )
 
         local downloaded_file=""
@@ -186,13 +188,22 @@ download_so_files() {
     mkdir -p "$INSTALL_BIN"
     cp "${temp_dir}"/*.so "$INSTALL_BIN/" 2>/dev/null || true
 
-    # Rename to standard names if needed
+    # Rename to standard names with lib prefix if needed
     pushd "$INSTALL_BIN" >/dev/null
     for file in *.so; do
-        if [[ "$file" == *"eva"* ]] && [[ "$file" != "eva.so" ]]; then
-            mv "$file" "eva.so" 2>/dev/null || true
-        elif [[ "$file" == *"runa"* ]] && [[ "$file" != "runa.so" ]]; then
-            mv "$file" "runa.so" 2>/dev/null || true
+        if [[ "$file" == *"eva"* ]] && [[ "$file" != "libeva.so" ]]; then
+            if [[ "$file" == "eva"* ]]; then
+                mv "$file" "libeva.so" 2>/dev/null || true
+            else
+                # If it already has a different name but contains eva
+                mv "$file" "libeva.so" 2>/dev/null || true
+            fi
+        elif [[ "$file" == *"runa"* ]] && [[ "$file" != "libruna.so" ]]; then
+            if [[ "$file" == "runa"* ]]; then
+                mv "$file" "libruna.so" 2>/dev/null || true
+            else
+                mv "$file" "libruna.so" 2>/dev/null || true
+            fi
         fi
     done
     popd >/dev/null
@@ -538,18 +549,18 @@ verify_installation() {
         verified=false
     fi
 
-    # Check library files in bin directory
-    if [ -f "${INSTALL_BIN}/eva.so" ]; then
-        success "✓ eva.so library found in bin/"
+    # Check library files in bin directory (with lib prefix)
+    if [ -f "${INSTALL_BIN}/libeva.so" ]; then
+        success "✓ libeva.so library found in bin/"
     else
-        warning "✗ eva.so library missing from bin/"
+        warning "✗ libeva.so library missing from bin/"
         verified=false
     fi
 
-    if [ -f "${INSTALL_BIN}/runa.so" ]; then
-        success "✓ runa.so library found in bin/"
+    if [ -f "${INSTALL_BIN}/libruna.so" ]; then
+        success "✓ libruna.so library found in bin/"
     else
-        warning "✗ runa.so library missing from bin/"
+        warning "✗ libruna.so library missing from bin/"
         verified=false
     fi
 
