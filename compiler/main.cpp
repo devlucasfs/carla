@@ -1,22 +1,6 @@
-#include "charset.hpp"
 #include "commands.hpp"
 #include "compiler_outputs.hpp"
 #include "params.hpp"
-#include "precompiler.hpp"
-#include "tokenizer/token.hpp"
-#include <chrono>
-#include <cstdlib>
-#include <filesystem>
-#include <iomanip>
-#include <sys/stat.h>
-#include <fstream>
-#include <ios>
-#include <iostream>
-#include <string>
-#include <vector>
-
-#include "parser/parser.hpp"
-#include "morgana/gen.hpp"
 
 int
 main(int argc, char **argv)
