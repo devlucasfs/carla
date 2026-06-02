@@ -12,5 +12,4 @@ main(int argc, char **argv)
     Commands cmd(params);
 
     return cmd.status;
-
 }

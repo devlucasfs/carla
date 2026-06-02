@@ -144,7 +144,7 @@ bool Commands::build(CompilerParams& params) {
 
     /* Create target directory if it doesn't exist */
     auto targetDir = std::filesystem::current_path() / "target";
-    std::filesystem::create_directory(targetDir);
+    if(! std::filesystem::exists(targetDir) ) std::filesystem::create_directory(targetDir);
 
     /* Write Morgana IR to target/output.morg */
     std::ofstream outFile("target/output.morg");
