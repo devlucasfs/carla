@@ -207,7 +207,7 @@ bool Commands::build(CompilerParams& params) {
 }
 
 bool Commands::init(CompilerParams& params) {
-    std::string targetDir = std::filesystem::current_path().string() + "/target.eva";
+    std::string targetDir = std::filesystem::current_path() / "target.eva";
     std::ofstream target(targetDir, std::ios::out);
     if(! target.is_open() ) CompilerOutputs::Fatal("Failed to create target.eva");
 
