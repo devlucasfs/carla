@@ -93,18 +93,18 @@ std::tuple<bool, std::string> interpreter_string(CARLA_PATTERN_ARGUMENTS, carla:
 
                     auto c_var = std::get<carla::symbols::const_variable>(*symbol);
                     auto c_type_str = "const " + c_var.type.carla;
-                    if( c_type_str != "const ascii" ) {
+                    if( c_type_str != carla::charset::const_utf8 ) {
                         if(! std::holds_alternative<morgana::ptr>(c_var.type.morgana) )
                         /* -> */ CompilerOutputs::Fatal(
                             "When to parse an string expression, was found an constant variable. "
-                            "Was expected `const ascii` but was received `" + c_type_str + "`.\n"
-                            "And `" + c_type_str + "` isn't an alias of `const ascii`."
+                            "Was expected `" + carla::charset::d_const_utf8 + "` but was received `" + c_type_str + "`.\n"
+                            "And `" + c_type_str + "` isn't an alias of `" + carla::charset::d_const_utf8 + "`."
                         );
 
                         CompilerOutputs::Warn(
                             "When to parse an string expression, was found an constant variable. "
-                            "Was expected `const ascii` but was received `" + c_type_str + "`.\n"
-                            "But was accepted because `" + c_type_str + "` is an alias of `const ascii`.\n"
+                            "Was expected `" + carla::charset::d_const_utf8 + "` but was received `" + c_type_str + "`.\n"
+                            "But was accepted because `" + c_type_str + "` is an alias of `" + carla::charset::d_const_utf8 + "`.\n"
                         );
                     };
 

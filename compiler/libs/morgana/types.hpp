@@ -44,7 +44,10 @@ namespace morgana {
     };
 
     std::string type_string(type t) {
-        if( std::holds_alternative<integer>(t) ) return "i" + std::to_string(std::get<integer>(t).bits);
+        if( std::holds_alternative<integer>(t) ) {
+            return (std::get<integer>(t).sign ? "i" : "u") +
+                    std::to_string(std::get<integer>(t).bits);
+        }
         else if( std::holds_alternative<ascii>(t) ) return "oschar";
         else if( std::holds_alternative<ptr>(t) ) return "ptr";
         else if( std::holds_alternative<void_t>(t) ) return "void";

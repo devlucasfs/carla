@@ -2,5 +2,5 @@
 void main = () {
     const complement := "potatoes";
     const uint8* text = "i love: " + complement + "!\n";
-    puts "[debug] " + text;
+    puts "[debug] " + text + " " + @cast(int, ostr, 14);
 }
