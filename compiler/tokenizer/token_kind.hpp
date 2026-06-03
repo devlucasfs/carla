@@ -24,7 +24,7 @@ typedef enum TokenKind {
     AND, OR, NIL, _FALSE, _TRUE,
     XOR, LAND, LOR, LNOT,
 
-    RETURN, PUTS, AUTO, OUR, FOR, STRUCT, ENUM, BREAK, CONTINUE, GPIO, IF, _CONST, ELSE, SIZEOF, LET, MUT, END_KEYWORDS,
+    RETURN, PUTS, AUTO, OUR, FOR, STRUCT, ENUM, BREAK, CONTINUE, GPIO, IF, _CONST, _CONSTEXPR, ELSE, SIZEOF, LET, MUT, END_KEYWORDS,
 
     PLUS_EQUAL, MINUS_EQUAL, STAR_EQUAL, SLASH_EQUAL,
 
@@ -118,7 +118,8 @@ std::string tokenKindToString(TokenKind kind) {
         case BREAK:             return "BREAK";
         case CONTINUE:          return "CONTINUE";
         case IF:                return "IF";
-        case _CONST:             return "CONST";
+        case _CONST:            return "CONST";
+        case _CONSTEXPR:        return "CONSTEXPR";
         case ELSE:              return "ELSE";
         case SIZEOF:            return "SIZEOF";
         case LET:               return "LET";

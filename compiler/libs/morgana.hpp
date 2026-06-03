@@ -28,7 +28,7 @@ namespace morgana {
         morgana::type type
     ), {
         size_t i = storage->variable.top();
-        storage->last.insert({ "alloc", i });
+        storage->last.insert_or_assign("alloc", i);
         size_t added = 1;
         ss << "_" << i << " = alloc " << type_string(type) << '\n';
         storage->variable.pop();
@@ -52,7 +52,7 @@ namespace morgana {
         size_t variable
     ), {
         size_t i = storage->variable.top();
-        storage->last.insert({ "expr", i });
+        storage->last.insert_or_assign("expr", i);
         size_t added = 1;
         ss << "_" << i << " = load _" << variable << "\n";
         storage->variable.pop();
@@ -64,7 +64,7 @@ namespace morgana {
         std::string buff
     ), {
         size_t i = storage->variable.top();
-        storage->last.insert({ "expr", i });
+        storage->last.insert_or_assign("expr", i);
         size_t added = 1;
         ss << "_" << i << " = constant \"" << buff << "\"\n";
         storage->variable.pop();

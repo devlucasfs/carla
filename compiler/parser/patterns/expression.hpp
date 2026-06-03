@@ -5,6 +5,7 @@
 #include <functional>
 #include <iostream>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <variant>
@@ -84,7 +85,32 @@ std::tuple<bool, std::string> interpreter_string(CARLA_PATTERN_ARGUMENTS, carla:
             case carla::ExprContext::Value: {
                 auto ctx = std::get<pContext>(ast.content);
                 auto val = std::get<Token>(ctx.content);
-                if( val.kind != STRING ) throw std::runtime_error("_");
+                if( val.kind != STRING && val.kind != IDENTIFIER ) throw std::runtime_error("_");
+                if( val.kind == IDENTIFIER ) {
+                    auto symbol = sym->findSymbol(val.lexeme);
+                    if( symbol == nullptr ) throw std::runtime_error("_");
+                    if(! std::holds_alternative<carla::symbols::const_variable>(*symbol) ) throw std::runtime_error("_");
+
+                    auto c_var = std::get<carla::symbols::const_variable>(*symbol);
+                    auto c_type_str = "const " + c_var.type.carla;
+                    if( c_type_str != "const ascii" ) {
+                        if(! std::holds_alternative<morgana::ptr>(c_var.type.morgana) )
+                        /* -> */ CompilerOutputs::Fatal(
+                            "When to parse an string expression, was found an constant variable. "
+                            "Was expected `const ascii` but was received `" + c_type_str + "`.\n"
+                            "And `" + c_type_str + "` isn't an alias of `const ascii`."
+                        );
+
+                        CompilerOutputs::Warn(
+                            "When to parse an string expression, was found an constant variable. "
+                            "Was expected `const ascii` but was received `" + c_type_str + "`.\n"
+                            "But was accepted because `" + c_type_str + "` is an alias of `const ascii`.\n"
+                        );
+                    };
+
+                    return std::get<std::string>(c_var.value);
+                }
+
                 return val.lexeme.substr(1, val.lexeme.size() - 2);
             } break;
             case carla::ExprContext::Block: {
@@ -122,7 +148,16 @@ std::tuple<bool, size_t> interpreter_integer(CARLA_PATTERN_ARGUMENTS, carla::Exp
             case carla::ExprContext::Value: {
                 auto ctx = std::get<pContext>(ast.content);
                 auto val = std::get<Token>(ctx.content);
-                if( val.kind != INTEGER ) throw std::runtime_error("_");
+                if( val.kind != INTEGER && val.kind != IDENTIFIER ) throw std::runtime_error("_");
+                if( val.kind == IDENTIFIER ) {
+                    auto symbol = sym->findSymbol(val.lexeme);
+                    if( symbol == nullptr ) throw std::runtime_error("_");
+                    if(! std::holds_alternative<carla::symbols::const_variable>(*symbol) ) throw std::runtime_error("_");
+
+                    auto c_var = std::get<carla::symbols::const_variable>(*symbol);
+                    return std::get<size_t>(c_var.value);
+                }
+
                 return std::stoll(val.lexeme);
             } break;
             case carla::ExprContext::Block: {

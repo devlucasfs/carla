@@ -2,6 +2,7 @@
 
 #include "./parser/symbols.hpp"
 #include "libs/morgana.hpp"
+#include "libs/morgana/types.hpp"
 #include <memory>
 
 void charset(Symt& sym) {
@@ -19,8 +20,12 @@ void charset(Symt& sym) {
 
     auto ptr = morgana::ptr();
     auto void_t = morgana::void_t();
+    auto oschar = morgana::ascii();
 
     sym.entry();
+    sym.addSymbol("ascii", morgana::type(ptr));
+    sym.addSymbol("char", morgana::type(oschar));
+
     sym.addSymbol("int", morgana::type(i0));
     sym.addSymbol("int8", morgana::type(i8));
     sym.addSymbol("int16", morgana::type(i16));

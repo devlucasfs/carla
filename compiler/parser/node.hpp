@@ -8,7 +8,12 @@
 #include "nodes/call.hpp"
 #include "nodes/lambda.hpp"
 
+namespace carla {
+    struct Nop { Nop() = default; };
+}
+
 #define CARLA_PNODE_CASE \
+    X(carla::Nop, NOP) \
     X(carla::Decl, DECLARATION) \
     X(carla::Lambda, LAMBDA) \
     X(carla::Start, COMPTIME_START) \

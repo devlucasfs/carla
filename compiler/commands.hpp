@@ -176,9 +176,7 @@ bool Commands::build(CompilerParams& params) {
     std::string morgcCommand = "morgana build -m " + absPath.string() + flgs;
     if( params.verbose ) CompilerOutputs::Warn("Runnig morgana as " + morgcCommand + "\n");
     if( std::system(morgcCommand.c_str()) != 0 ) {
-        std::cout << "\n\033[B";
         CompilerOutputs::ClearCurrentLine();
-        std::cout << "\033[A";
         return -1;
     }
 

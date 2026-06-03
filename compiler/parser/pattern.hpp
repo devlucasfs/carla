@@ -38,6 +38,7 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr=false);
 #include "./patterns/call.hpp"
 #include "./patterns/statement.hpp"
 #include "./patterns/lambda.hpp"
+#include "./patterns/constexpr.hpp"
 
 #include <cstddef>
 #include <sstream>
@@ -53,6 +54,7 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
         switch(tk.kind) {
         case IDENTIFIER:
         if( call(CARLA_PATTERN_EXPORT) ) return Some{};
+        else return Err{unknownPattern(ctx, index)};
         default: return Err{""};
         }
     }
@@ -75,15 +77,22 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
     };
     case START:
     if( macros(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
+    else return Err{unknownPattern(ctx, index)};
+    case _CONST:
+    if( const_definition(CARLA_PATTERN_EXPORT) ) return Some{};
+    else return Err{unknownPattern(ctx, index)};
     case PUTS:
     if( statement(CARLA_PATTERN_EXPORT, "puts") ) return Some{};
+    else return Err{unknownPattern(ctx, index)};
     case IDENTIFIER:
     // if( call(CARLA_PATTERN_EXPORT) ) return Some{};
     if( declaration(CARLA_PATTERN_EXPORT) ) return Some{};
+    else return Err{unknownPattern(ctx, index)};
     case INTEGER:
     case _FLOAT:
     case STRING:
     if( expression(CARLA_PATTERN_EXPORT) ) return Some{};
+    else return Err{unknownPattern(ctx, index)};
     default: return Err{unknownPattern(ctx, index)};
     }
 

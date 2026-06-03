@@ -7,15 +7,24 @@
 #include <vector>
 
 #include "../compiler_outputs.hpp"
+#include "nodes/expression.hpp"
 #include "nodes/type.hpp"
 
 namespace carla::symbols {
     using variable = carla::Type;
+    struct const_variable {
+        carla::Type type;
+        carla::InterpreterResult value;
+        ~const_variable() = default;
+        const_variable(carla::Type t, carla::InterpreterResult i)
+            : type(t), value(i) {};
+    };
 };
 
 using Symbol = std::variant<
     std::monostate,
     morgana::type,
+    carla::symbols::const_variable,
     carla::symbols::variable
 >;
 
@@ -77,6 +86,6 @@ inline Symbol* Symt::findSymbol(const std::string& name) {
         }
     }
 
-    CompilerOutputs::Fatal("cannot find symbol: " + name);
+    CompilerOutputs::Warn("cannot find symbol: " + name);
     return nullptr;
 }

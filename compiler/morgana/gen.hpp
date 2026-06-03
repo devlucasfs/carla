@@ -40,49 +40,16 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
 
                 bool already_d_make = false;
                 if( expr.is_static && std::holds_alternative<std::string>(expr.data) ) {
+                    auto text = std::get<std::string>(expr.data);
                     builder << morgana::static_declaration(&storage, std::get<std::string>(expr.data));
                     already_d_make = true;
                 }
 
-                std::function<size_t(const carla::ExprContext& expr)> make_expr = [&](const carla::ExprContext& expr) {
-                    switch(expr.kind) {
-                        case carla::ExprContext::Value: {
-                            auto& ctx = std::get<pContext>(expr.content);
-                            if( ctx.kind == Common ) {
-                                auto tk = std::get<Token>(ctx.content);
-                                if( tk.kind == IDENTIFIER ) {
-                                    auto [index, _] = vmap.at(tk.lexeme);
-                                    builder << morgana::load(&storage, index);
-                                    return storage.variable.top() - 1;
-                                }
-                            }
-                            return (size_t) 0;
-                        } break;
-
-                        case carla::ExprContext::Node: {
-                            auto node = std::get<void*>(expr.content);
-                            Context ctx;
-                            builder << generateMorganaCode({ *((pNode*)node) }, symbols, true);
-                            return (size_t) 0;
-                        } break;
-
-                        // case carla::ExprContext::Block: {
-                            // auto& block = std::get<std::vector<carla::ExprContext>>(expr.content);
-                            // std::cout << indent << "Block with " << block.size() << " elements:\n";
-                            // for(auto& item : block) {
-                                // print_expr_context(item, level + 1);
-                            // }
-                        // } break;
-
-                        default: return (size_t) 0;
-                    }
-                };
-
                 size_t value_index;
                 if( already_d_make ) value_index = morgana::last(&storage, "expr");
                 else if(! expr.is_static ) {
-                    value_index = make_expr(expr.ast);
-                    already_d_make = true;
+                    // value_index = make_expr(expr.ast);
+                    // already_d_make = true;
                 }
 
                 auto [ reason, data ] = stack_reason.top();
@@ -149,6 +116,7 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
                     } break;
                 }
             } break;
+            case NOP: break;
         }
     }
 

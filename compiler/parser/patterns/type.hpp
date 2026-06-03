@@ -92,9 +92,9 @@ typement(CARLA_PATTERN_ARGUMENTS) {
             is_ptr = true;
             while(1) {
                 CARLA_GET_NEXT(ptr, _default);
-                if( ptr.kind != Common ) break;
+                if( ptr.kind != Common ) { (*index)--; break; }
                 tk = std::get<Token>(ptr.content);
-                if( tk.kind != STAR ) break;
+                if( tk.kind != STAR ) { (*index)--; break; }
                 levels++;
             }
         }

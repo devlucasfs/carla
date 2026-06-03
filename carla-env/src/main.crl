@@ -1,4 +1,6 @@
 @_start
 void main = () {
-    int8 x = 32;
+    const complement := "potatoes";
+    const uint8* text = "i love: " + complement + "!\n";
+    puts "[debug] " + text;
 }

@@ -39,6 +39,7 @@ Scanner::read(std::vector<char> source, std::streamsize size)
 
         {"our", OUR},
         {"const", _CONST},
+        {"constexpr", _CONSTEXPR},
         {"if", IF},
         {"else", ELSE},
         {"sizeof", SIZEOF},
