@@ -49,7 +49,7 @@ Scanner::read(std::vector<char> source, std::streamsize size)
         {"puts", PUTS},
 
         {"@_start", START},
-        {"@type", TYPE},
+        {"@cast", CAST},
         {"@use", USE},
         {"@import", IMPORT}
     };

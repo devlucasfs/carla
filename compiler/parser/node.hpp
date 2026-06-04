@@ -7,6 +7,7 @@
 #include "nodes/start.hpp"
 #include "nodes/call.hpp"
 #include "nodes/lambda.hpp"
+#include "nodes/comptime.hpp"
 
 namespace carla {
     struct Nop { Nop() = default; };
@@ -19,7 +20,8 @@ namespace carla {
     X(carla::Start, COMPTIME_START) \
     X(carla::Expr, EXPRESSION) \
     X(carla::Stmt, STATEMENT) \
-    X(carla::Call, CALL)
+    X(carla::Call, CALL) \
+    X(carla::ComptimeValue, COMPTIME_VALUE)
 
 #define X(type, ...) , type
 using pNode = std::variant<std::monostate CARLA_PNODE_CASE>;

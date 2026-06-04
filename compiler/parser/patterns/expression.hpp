@@ -2,6 +2,7 @@
 
 #include "../pattern.hpp"
 #include "../nodes/expression.hpp"
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <optional>
@@ -45,12 +46,12 @@ std::tuple<bool, pNode> parse_node(CARLA_PATTERN_ARGUMENTS) {
     return std::make_tuple(false, std::monostate());
 }
 
-std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS);
+std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS, bool);
 std::tuple<bool, carla::InterpreterResult> interpreter(CARLA_PATTERN_ARGUMENTS, carla::ExprContext& ast);
 
-bool expression(CARLA_PATTERN_ARGUMENTS) {
+bool expression(CARLA_PATTERN_ARGUMENTS, bool args = false) {
     CARLA_PATTERN_STARTS(bool, false);
-    auto [success_ast, ast] = make_ast(CARLA_PATTERN_EXPORT);
+    auto [success_ast, ast] = make_ast(CARLA_PATTERN_EXPORT, args);
     if(! success_ast ) CARLA_RETURN_DEFAULT;
 
     auto [success_interpreter, val] = interpreter(CARLA_PATTERN_EXPORT, ast);
@@ -81,7 +82,19 @@ bool expression(CARLA_PATTERN_ARGUMENTS) {
 std::tuple<bool, std::string> interpreter_string(CARLA_PATTERN_ARGUMENTS, carla::ExprContext& root) {
     std::function<std::string(carla::ExprContext&)> interpreter = [&](carla::ExprContext& ast) -> std::string {
         switch(ast.kind) {
-            case carla::ExprContext::Node: throw std::runtime_error("_");
+            case carla::ExprContext::Node: {
+                pNode *pnode = (pNode*) std::get<void*>(ast.content);
+                pNode node = *pnode;
+
+                if(! std::holds_alternative<carla::InterpreterResult>(node) ) throw std::runtime_error("_");
+
+                auto result = std::get<carla::InterpreterResult>(node);
+                if(! std::holds_alternative<std::string>(result) ) throw std::runtime_error("_");
+
+                std::free(pnode);
+                auto data = std::get<std::string>(result);
+                return data;
+            }
             case carla::ExprContext::Value: {
                 auto ctx = std::get<pContext>(ast.content);
                 auto val = std::get<Token>(ctx.content);
@@ -272,7 +285,7 @@ void reorder(std::vector<carla::ExprContext>& sub) {
 
 void print_expr_context(const carla::ExprContext& expr, int level = 0);
 
-std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS) {
+std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS, bool args) {
     auto d = std::make_tuple(false, carla::ExprContext());
     CARLA_PATTERN_STARTS(auto, d);
 
@@ -283,13 +296,21 @@ std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS) {
         auto [success, node] = parse_node(CARLA_PATTERN_EXPORT);
 
         if( success ) {
-            sub.push_back(carla::ExprContext::make_node((void*)(&node)));
+            pNode *heap_alloc = (pNode*) std::malloc(sizeof(pNode));
+            *heap_alloc = node;
+            sub.push_back(carla::ExprContext::make_node((void*)heap_alloc));
             continue;
         }
 
         auto ctxNode = (*ctx)[(*index)++];
 
-        if( ctxNode.kind == Common && std::get<Token>(ctxNode.content).kind == TokenKind::SEMICOLON ) {
+        Token _tk;
+        if(
+            ctxNode.kind == Common
+            && ( (_tk = std::get<Token>(ctxNode.content)).kind == TokenKind::SEMICOLON ||
+                 (_tk.kind == TokenKind::COMMA && args)
+            )
+        ) {
             endded = true;
             break;
         }
@@ -297,7 +318,7 @@ std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS) {
         sub.push_back(carla::ExprContext::make_value(ctxNode));
     }
 
-    if(! endded ) CARLA_RETURN_DEFAULT;
+    if(! (args || endded) ) CARLA_RETURN_DEFAULT;
     if( sub.empty() ) CARLA_RETURN_DEFAULT;
 
     reorder(sub);

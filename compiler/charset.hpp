@@ -6,17 +6,17 @@
 #include <memory>
 
 #define CARLA_CHARSET_EXPORTS_FIELDS \
-    X(utf8, "ostr")
+    X(utf8, "asciz")
 
 #define X1(id)      Y(id, #id)
 #define X2(id, str) Y(id, str)
 #define GET_MACRO(_1,_2,NAME,...) NAME
 #define X(...) GET_MACRO(__VA_ARGS__, X2, X1)(__VA_ARGS__)
-#define Y(x, y)                           \
-constexpr auto x = y;                     \
-constexpr auto const_##x = "const " y;    \
-std::string d_##x = std::string(x);       \
-std::string d_const_##x = std::string(x);
+#define Y(x, y)                                   \
+constexpr auto x = y;                             \
+constexpr auto const_##x = "const " y;            \
+std::string d_##x = std::string(x);               \
+std::string d_const_##x = std::string(const_##x);
 namespace carla::charset { CARLA_CHARSET_EXPORTS_FIELDS }
 #undef GET_MACRO
 #undef X2

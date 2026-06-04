@@ -32,6 +32,8 @@
 
 Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr=false);
 
+#include "../charset.hpp"
+
 #include "./patterns/declaration.hpp"
 #include "./patterns/expression.hpp"
 #include "./patterns/macros.hpp"
@@ -52,6 +54,9 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
     if( expr && context.kind == Common ) {
         Token tk = std::get<Token>(context.content);
         switch(tk.kind) {
+        case CAST:
+        if( macros(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
+        else return Err{unknownPattern(ctx, index)};
         case IDENTIFIER:
         if( call(CARLA_PATTERN_EXPORT) ) return Some{};
         else return Err{unknownPattern(ctx, index)};
@@ -76,6 +81,7 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
         return Some{};
     };
     case START:
+    case CAST:
     if( macros(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
     else return Err{unknownPattern(ctx, index)};
     case _CONST:

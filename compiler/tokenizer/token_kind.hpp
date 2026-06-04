@@ -28,7 +28,7 @@ typedef enum TokenKind {
 
     PLUS_EQUAL, MINUS_EQUAL, STAR_EQUAL, SLASH_EQUAL,
 
-    START, TYPE, USE, IMPORT,
+    START, CAST, USE, IMPORT,
 
     CARLA_EOF,
     UNKNOWN_TK
@@ -131,7 +131,7 @@ std::string tokenKindToString(TokenKind kind) {
         case SLASH_EQUAL:       return "SLASH_EQUAL";
 
         case START:             return "START";
-        case TYPE:              return "TYPE";
+        case CAST:              return "CAST";
         case USE:               return "USE";
         case IMPORT:            return "IMPORT";
 

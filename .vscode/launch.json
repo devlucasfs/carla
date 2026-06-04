@@ -6,7 +6,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/carla",
-      "args": ["run -o x86_64-linux"],
+      "args": ["build -m carla-env/src/main.crl"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],

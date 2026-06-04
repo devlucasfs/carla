@@ -1,6 +1,6 @@
 @_start
 void main = () {
     const complement := "potatoes";
-    const uint8* text = "i love: " + complement + "!\n";
-    puts "[debug] " + text + " " + @cast(int, ostr, 14);
+    const asciz text = "i love: " + complement + "!\n";
+    puts "Hello! " + text + "My name is Lucas and I am " + @cast(int, asciz, 16) + "\n";
 }
