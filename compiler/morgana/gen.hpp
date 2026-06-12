@@ -61,8 +61,8 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
                             continue;
                         }
 
-                        if( expr.is_static && std::holds_alternative<size_t>(expr.data) )
-                        /* -> */ builder << morgana::store_literal(morgana::last(&storage, "alloc"), std::get<size_t>(expr.data));
+                        if( expr.is_static && std::holds_alternative<numeric>(expr.data) )
+                        /* -> */ builder << morgana::store_literal(morgana::last(&storage, "alloc"), std::get<numeric>(expr.data).value<numeric::integer>());
 
                         continue;
                     } break;

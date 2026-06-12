@@ -11,8 +11,9 @@ namespace morgana {
     struct void_t;
     struct tuple;
     struct ascii;
+    struct decimal;
 
-    using type = std::variant<std::monostate, integer, ptr, void_t, tuple, ascii>;
+    using type = std::variant<std::monostate, integer, decimal, ptr, void_t, tuple, ascii>;
 
     struct integer {
         int bits;
@@ -20,6 +21,12 @@ namespace morgana {
         integer(int bits) : bits(bits), sign(false) {}
         integer(int bits, bool sign) : bits(bits), sign(sign) {}
         ~integer() = default;
+    };
+
+    struct decimal {
+        int bits;
+        decimal(int bits) : bits(bits) {}
+        ~decimal() = default;
     };
 
     struct ascii {
@@ -47,6 +54,9 @@ namespace morgana {
         if( std::holds_alternative<integer>(t) ) {
             return (std::get<integer>(t).sign ? "i" : "u") +
                     std::to_string(std::get<integer>(t).bits);
+        }
+        else if( std::holds_alternative<decimal>(t) ) {
+            return "f" + std::to_string(std::get<decimal>(t).bits);
         }
         else if( std::holds_alternative<ascii>(t) ) return "oschar";
         else if( std::holds_alternative<ptr>(t) ) return "ptr";

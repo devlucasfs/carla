@@ -9,10 +9,12 @@
 #include "../ctx.hpp"
 #include "../../libs/morgana/types.hpp"
 
+#include "../../utils/numeric.hpp"
+
 namespace carla {
 
     struct ExprContext;
-    using InterpreterResult = std::variant<std::monostate, size_t, std::string>;
+    using InterpreterResult = std::variant<std::monostate, numeric, std::string>;
     using ExprBlock = std::vector<carla::ExprContext>;
     struct ExprContext {
         enum Kind { Value, Node, Block } kind;
@@ -76,10 +78,18 @@ namespace carla {
             return e;
         }
 
-        static Expr make_integer(size_t data) {
+        static Expr make_integer(numeric data) {
             Expr e;
             e.is_static = true;
             e.result.emplace(carla::Type("int", morgana::integer(0)));
+            e.data = data;
+            return e;
+        }
+
+        static Expr make_decimal(numeric data) {
+            Expr e;
+            e.is_static = true;
+            e.result.emplace(carla::Type("float", morgana::decimal(0)));
             e.data = data;
             return e;
         }

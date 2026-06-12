@@ -4,7 +4,6 @@
 #include "../parser/symbols.hpp"
 #include "../parser/pattern.hpp"
 #include <cstddef>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <variant>
@@ -72,18 +71,17 @@ macro_cast_static(CAST_MACRO_STATIC_ARGUMENTS)
 {
     carla::InterpreterResult r;
 
-    if( std::holds_alternative<morgana::integer>(to) ) r = size_t(0);
-    if( std::holds_alternative<morgana::ptr>(to) ) r = "";
+    if( std::holds_alternative<numeric>(value) && std::holds_alternative<morgana::integer>(original) ) {
+        auto val = std::get<numeric>(value);
 
-    if( std::holds_alternative<size_t>(value) && std::holds_alternative<morgana::integer>(original) ) {
-        auto val = std::get<size_t>(value);
-        if( std::holds_alternative<morgana::ptr>(to) ) return std::to_string(val);
+        if( std::holds_alternative<morgana::ptr>(to) ) return std::to_string(val.value<numeric::integer>());
         else return val;
     }
 
-    if( std::holds_alternative<std::string>(value) && std::holds_alternative<morgana::ptr>(original) ) {
-        auto val = std::get<std::string>(value);
-        if( std::holds_alternative<morgana::ptr>(to) ) return (size_t) std::stoll(val);
+    if( std::holds_alternative<numeric>(value) && std::holds_alternative<morgana::decimal>(original) ) {
+        auto val = std::get<numeric>(value);
+
+        if( std::holds_alternative<morgana::ptr>(to) ) return std::to_string(val.value<numeric::decimal>());
         else return val;
     }
 

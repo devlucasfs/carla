@@ -38,6 +38,12 @@ void charset(Symt& sym) {
          u32 = morgana::integer(32, false),
          u64 = morgana::integer(64, false);
 
+    auto f0  = morgana::decimal(0),
+         f8  = morgana::decimal(8),
+         f16 = morgana::decimal(16),
+         f32 = morgana::decimal(32),
+         f64 = morgana::decimal(64);
+
     auto ptr = morgana::ptr();
     auto void_t = morgana::void_t();
     auto oschar = morgana::ascii();
@@ -45,6 +51,12 @@ void charset(Symt& sym) {
     sym.entry();
     sym.addSymbol(carla::charset::utf8, morgana::type(ptr));
     sym.addSymbol("char", morgana::type(oschar));
+
+    sym.addSymbol("float", morgana::type(f0));
+    sym.addSymbol("float8", morgana::type(f8));
+    sym.addSymbol("float16", morgana::type(f16));
+    sym.addSymbol("float32", morgana::type(f32));
+    sym.addSymbol("float64", morgana::type(f64));
 
     sym.addSymbol("int", morgana::type(i0));
     sym.addSymbol("int8", morgana::type(i8));

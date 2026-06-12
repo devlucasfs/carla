@@ -42,7 +42,7 @@ namespace morgana {
     });
 
     morgana_func(store_literal, (
-        size_t x, size_t y
+        long long x, long long y
     ), {
         ss << "store _" << x << ' ' << y << '\n';
     });

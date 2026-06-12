@@ -6,6 +6,7 @@
 #include "compiler_outputs.hpp"
 #include "precompiler.hpp"
 #include "morgana/gen.hpp"
+#include "tokenizer/scanner.hpp"
 #include "tokenizer/token.hpp"
 #include "parser/parser.hpp"
 #include "parser/symbols.hpp"
@@ -133,7 +134,8 @@ bool Commands::build(CompilerParams& params) {
 
     Symt symbols;
     /* Lexical & Precompiler phase */
-    std::vector<Token> tokens = precompiler(src, size, params);
+    std::vector<Token> tokens = Scanner::read(src, size);
+    // std::vector<Token> tokens = precompiler(src, size, params);
 
     /* Parser phase */
     charset(symbols);

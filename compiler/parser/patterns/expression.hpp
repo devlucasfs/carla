@@ -56,12 +56,16 @@ bool expression(CARLA_PATTERN_ARGUMENTS, bool args = false) {
 
     auto [success_interpreter, val] = interpreter(CARLA_PATTERN_EXPORT, ast);
     if( success_interpreter ) {
-        const int EXPR_INTEGER = 1, EXPR_STRING = 2;
+        const int EXPR_NUMERIC = 1, EXPR_STRING = 2;
         std::optional<carla::Expr> expr;
         switch(val.index()) {
-            case EXPR_INTEGER: {
-                int data = std::get<size_t>(val);
-                expr.emplace(carla::Expr::make_integer(data));
+            case EXPR_NUMERIC: {
+                auto data = std::get<numeric>(val);
+                expr.emplace(
+                    data.is<numeric::decimal>()
+                        ? carla::Expr::make_decimal(data)
+                        : carla::Expr::make_integer(data)
+                );
             } break;
             case EXPR_STRING: {
                 std::string data = std::get<std::string>(val);
@@ -154,24 +158,24 @@ std::tuple<bool, std::string> interpreter_string(CARLA_PATTERN_ARGUMENTS, carla:
     catch(const std::exception& _) { return std::make_tuple(false, std::string()); }
 }
 
-std::tuple<bool, size_t> interpreter_integer(CARLA_PATTERN_ARGUMENTS, carla::ExprContext& root) {
-    std::function<size_t(carla::ExprContext&)> interpreter = [&](carla::ExprContext& ast) -> size_t {
+std::tuple<bool, numeric> interpreter_numeric(CARLA_PATTERN_ARGUMENTS, carla::ExprContext& root) {
+    std::function<numeric(carla::ExprContext&)> interpreter = [&](carla::ExprContext& ast) -> numeric {
         switch(ast.kind) {
             case carla::ExprContext::Node: throw std::runtime_error("_");
             case carla::ExprContext::Value: {
                 auto ctx = std::get<pContext>(ast.content);
                 auto val = std::get<Token>(ctx.content);
-                if( val.kind != INTEGER && val.kind != IDENTIFIER ) throw std::runtime_error("_");
+                if( val.kind != INTEGER && val.kind != _FLOAT && val.kind != IDENTIFIER ) throw std::runtime_error("_");
                 if( val.kind == IDENTIFIER ) {
                     auto symbol = sym->findSymbol(val.lexeme);
                     if( symbol == nullptr ) throw std::runtime_error("_");
                     if(! std::holds_alternative<carla::symbols::const_variable>(*symbol) ) throw std::runtime_error("_");
 
                     auto c_var = std::get<carla::symbols::const_variable>(*symbol);
-                    return std::get<size_t>(c_var.value);
+                    return std::get<numeric>(c_var.value);
                 }
 
-                return std::stoll(val.lexeme);
+                return val.kind == INTEGER ? std::stoll(val.lexeme) : std::stod(val.lexeme);
             } break;
             case carla::ExprContext::Block: {
                 auto block = std::get<carla::ExprBlock>(ast.content);
@@ -186,7 +190,7 @@ std::tuple<bool, size_t> interpreter_integer(CARLA_PATTERN_ARGUMENTS, carla::Exp
                 auto ctx = std::get<pContext>(op.content);
                 auto op_tk = std::get<Token>(ctx.content);
 
-                size_t result;
+                numeric result;
                 switch(op_tk.kind) {
                     case PLUS: result = lhs_val + rhs_val; break;
                     case MINUS: result = lhs_val - rhs_val; break;
@@ -207,14 +211,14 @@ std::tuple<bool, size_t> interpreter_integer(CARLA_PATTERN_ARGUMENTS, carla::Exp
     };
 
     try { return std::make_tuple(true, interpreter(root)); }
-    catch(const std::exception& _) { return std::make_tuple(false, 0); }
+    catch(const std::exception& _) { return std::make_tuple(false, numeric(0LL)); }
 }
 
 std::tuple<bool, carla::InterpreterResult> interpreter(CARLA_PATTERN_ARGUMENTS, carla::ExprContext& ast) {
     auto [str_success, str_result] = interpreter_string(CARLA_PATTERN_EXPORT, ast);
     if( str_success ) return std::make_tuple(true, str_result);
 
-    auto [integer_success, integer_result] = interpreter_integer(CARLA_PATTERN_EXPORT, ast);
+    auto [integer_success, integer_result] = interpreter_numeric(CARLA_PATTERN_EXPORT, ast);
     if( integer_success ) return std::make_tuple(true, integer_result);
 
     return std::make_tuple(false, std::monostate());
@@ -283,8 +287,6 @@ void reorder(std::vector<carla::ExprContext>& sub) {
     if(! values.empty() ) sub.push_back(values.back());
 }
 
-void print_expr_context(const carla::ExprContext& expr, int level = 0);
-
 std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS, bool args) {
     auto d = std::make_tuple(false, carla::ExprContext());
     CARLA_PATTERN_STARTS(auto, d);
@@ -323,43 +325,5 @@ std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS, bool args
 
     reorder(sub);
     (*index)--;
-    // if(! sub.empty() ) { print_expr_context(sub[0]); }
     return { true, sub[0] };
-}
-
-void print_expr_context(const carla::ExprContext& expr, int level) {
-    std::string indent(level * 2, ' ');
-
-    switch(expr.kind) {
-        case carla::ExprContext::Value: {
-            auto& ctx = std::get<pContext>(expr.content);
-            if( ctx.kind == Common ) {
-                auto tk = std::get<Token>(ctx.content);
-                std::cout << indent << "Value (Token): " << tk.to_string() << "\n";
-            }
-            else if( ctx.kind == Block ) {
-                auto& block = std::get<std::vector<pContext>>(ctx.content);
-                std::cout << indent << "Value (pContext Block) with " << block.size() << " elements\n";
-                for (auto item : block ) {
-                    if( item.kind == Common ) {
-                        auto tk = std::get<Token>(item.content);
-                        std::cout << indent << "  - " << tk.to_string() << "\n";
-                    }
-                }
-            }
-        } break;
-
-        case carla::ExprContext::Node: {
-            auto& node = std::get<void*>(expr.content);
-            std::cout << indent << "Node: " << (*((pNode*)node)).index() << "\n";
-        } break;
-
-        case carla::ExprContext::Block: {
-            auto& block = std::get<std::vector<carla::ExprContext>>(expr.content);
-            std::cout << indent << "Block with " << block.size() << " elements:\n";
-            for(auto& item : block) {
-                print_expr_context(item, level + 1);
-            }
-        } break;
-    }
 }

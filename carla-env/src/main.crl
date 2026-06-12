@@ -2,5 +2,5 @@
 void main = () {
     const complement := "potatoes";
     const asciz text = "i love: " + complement + "!\n";
-    puts "Hello! " + text + "My name is Lucas and I am " + @cast(int, asciz, 16) + "\n";
+    puts "Hello! " + text + "My name is Lucas and I am " + @cast(float, asciz, 3.67) + "\n";
 }

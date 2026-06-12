@@ -45,7 +45,7 @@ bool const_definition(CARLA_PATTERN_ARGUMENTS) {
 
     std::optional<carla::Type> decl_t;
 
-    if( std::holds_alternative<size_t>(expr.data) ) decl_t.emplace("int", morgana::integer(0));
+    if( std::holds_alternative<numeric>(expr.data) ) decl_t.emplace("int", morgana::integer(0));
     if( std::holds_alternative<std::string>(expr.data) ) decl_t.emplace(carla::charset::utf8, morgana::ptr());
 
     if(! decl_t.has_value() ) CARLA_RETURN_DEFAULT;

@@ -1,13 +1,10 @@
 // Isto armazena os dados do compilador
 #pragma once
 
-#include "compiler_outputs.hpp"
 #include "libs/eva.hpp"
 #include <cstring>
-#include <iostream>
 #include <stdexcept>
 #include <string>
-#include <variant>
 
 typedef struct CompilerParams {
 public:
