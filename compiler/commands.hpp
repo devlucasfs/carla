@@ -169,8 +169,8 @@ bool Commands::build(CompilerParams& params) {
             << Colorizer::RESET << "\n";
     CompilerOutputs::Log(duration.str());
 
-    std::cout << Colorizer::DARK_GREY << "└─ " << Colorizer::RESET << "Morgana Object generated "
-            << Colorizer::BOLD << Colorizer::DARK_GREY << Colorizer::BOLD_YELLOW << " (not compiled yet)";
+    std::cout << Colorizer::DARK_GREY << "└─ " << Colorizer::RESET << "Working collaboratively with Morgana"
+            << Colorizer::BOLD << Colorizer::DARK_GREY << Colorizer::BOLD_YELLOW << " (Back-end)";
 
     /* Compile Morgana IR to object file using morgc silently */
     std::string flgs = ((params.target != "unknown") ? " -o " + params.target : "");
