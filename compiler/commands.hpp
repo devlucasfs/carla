@@ -214,6 +214,9 @@ bool Commands::build(CompilerParams& params) {
 
     float seconds = ms.count() / 1000000.0;
 
+    for( std::string line : lines )
+    /* -> */ std::cout << line << std::endl;
+
     CompilerOutputs::ClearCurrentLine();
     std::cout << Colorizer::DARK_GREY << "   └─ " << Colorizer::RESET << "Total compilation proccess time: " << Colorizer::BOLD_YELLOW
               << std::fixed << std::setprecision(2) << seconds << "s"
