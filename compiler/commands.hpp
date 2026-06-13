@@ -169,41 +169,27 @@ bool Commands::build(CompilerParams& params) {
             << Colorizer::RESET << "\n";
     CompilerOutputs::Log(duration.str());
 
-    std::cout << Colorizer::DARK_GREY << "└─ " << Colorizer::RESET << "Working collaboratively with Morgana"
-            << Colorizer::BOLD << Colorizer::DARK_GREY << Colorizer::BOLD_YELLOW << " (Back-end)";
+    std::cout << Colorizer::DARK_GREY << "└─ " << Colorizer::RESET << "Morgana Object generated "
+            << Colorizer::BOLD << Colorizer::DARK_GREY << Colorizer::BOLD_YELLOW << " (not compiled yet)";
 
     /* Compile Morgana IR to object file using morgc silently */
     std::string flgs = ((params.target != "unknown") ? " -o " + params.target : "");
     if( params.verbose ) flgs += " -v";
     std::string morgcCommand = "morgana build -m " + absPath.string() + flgs;
     if( params.verbose ) CompilerOutputs::Warn("Runnig morgana as " + morgcCommand + "\n");
-    if( std::system(morgcCommand.c_str()) != 0 ) {
-        CompilerOutputs::ClearCurrentLine();
-        return -1;
-    }
+    std::system(morgcCommand.c_str());
 
     auto end = std::chrono::high_resolution_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
     float seconds = ms.count() / 1000000.0;
 
-    for( int i = 0; i < 3; i++ ) {
-        std::cout << "\033[A";
-        CompilerOutputs::ClearCurrentLine();
-    }
+    CompilerOutputs::ClearCurrentLine();
+    std::cout << Colorizer::DARK_GREY << "   └─ " << Colorizer::RESET << "Total compilation proccess time: " << Colorizer::BOLD_YELLOW
+              << std::fixed << std::setprecision(2) << seconds << "s"
+              << Colorizer::RESET << "\n";
 
-    duration.str("");
-    duration << "Total " << Colorizer::BOLD_CYAN << "Carla" << Colorizer::RESET
-            << " + " << Colorizer::BOLD_RED << "Morgana" << Colorizer::RESET
-            << " compilation proccess time: " << Colorizer::BOLD_YELLOW
-            << std::fixed << std::setprecision(2) << seconds << "s"
-            << Colorizer::RESET << "\n";
-    CompilerOutputs::Log(duration.str());
-    std::cout << Colorizer::DARK_GREY << "└─ " << Colorizer::RESET << "Morgana Object emitted "
-            << Colorizer::BOLD << Colorizer::DARK_GREY << "|" << Colorizer::BOLD_YELLOW << " ./target/output "
-            << Colorizer::DARK_GREY << "(.exe)" << Colorizer::RESET << std::endl;
-
-    return true;
+              return true;
 }
 
 bool Commands::init(CompilerParams& params) {
