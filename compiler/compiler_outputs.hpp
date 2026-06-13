@@ -56,7 +56,7 @@ void
 CompilerOutputs::Fatal(std::string log)
 {
     std::cout << "\r" << Colorizer::BOLD_RED << "[Carla FAIL]" << Colorizer::RESET << ": " << log << std::endl;
-    std::exit(-1);
+    std::exit(38);
 }
 
 
