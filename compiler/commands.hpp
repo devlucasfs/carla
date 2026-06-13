@@ -11,6 +11,7 @@
 #include "parser/parser.hpp"
 #include "parser/symbols.hpp"
 
+#include <cstdlib>
 #include <iomanip>
 #include <filesystem>
 #include <fstream>
@@ -177,7 +178,36 @@ bool Commands::build(CompilerParams& params) {
     if( params.verbose ) flgs += " -v";
     std::string morgcCommand = "morgana build -m " + absPath.string() + flgs;
     if( params.verbose ) CompilerOutputs::Warn("Runnig morgana as " + morgcCommand + "\n");
-    std::system(morgcCommand.c_str());
+
+    FILE* pipe = popen(morgcCommand.c_str(), "r");
+    if(! pipe ) {
+        CompilerOutputs::Fatal("Fail when run morgana. #1\n");
+        return false;
+    }
+
+    char buffer[256];
+    std::vector<std::string> lines;
+
+    while( fgets(buffer, sizeof(buffer), pipe) != nullptr ) {
+        std::string linha(buffer);
+        if(! linha.empty() && linha.back() == '\n') linha.pop_back();
+        lines.push_back(linha);
+    }
+
+    int status_bruto = pclose(pipe);
+
+    if( WEXITSTATUS(status_bruto) == 38 ) {
+        std::string line = lines.at(0);
+
+        for( int i = 0; i < 3; i++ ) {
+            std::cout << "\033[1A\r";
+            CompilerOutputs::ClearCurrentLine();
+        }
+
+        std::cout.flush();
+        std::cout << line << std::endl;
+        exit(0);
+    }
 
     auto end = std::chrono::high_resolution_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
@@ -189,7 +219,7 @@ bool Commands::build(CompilerParams& params) {
               << std::fixed << std::setprecision(2) << seconds << "s"
               << Colorizer::RESET << "\n";
 
-              return true;
+    return true;
 }
 
 bool Commands::init(CompilerParams& params) {
