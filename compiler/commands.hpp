@@ -181,7 +181,7 @@ bool Commands::build(CompilerParams& params) {
 
     FILE* pipe = popen(morgcCommand.c_str(), "r");
     if(! pipe ) {
-        CompilerOutputs::Fatal("Fail when run morgana. #1\n");
+        CompilerOutputs::Fatal("Fail when to open Morgana pipe.\n");
         return false;
     }
 
@@ -189,9 +189,9 @@ bool Commands::build(CompilerParams& params) {
     std::vector<std::string> lines;
 
     while( fgets(buffer, sizeof(buffer), pipe) != nullptr ) {
-        std::string linha(buffer);
-        if(! linha.empty() && linha.back() == '\n') linha.pop_back();
-        lines.push_back(linha);
+        std::string line(buffer);
+        if(! line.empty() && line.back() == '\n') line.pop_back();
+        lines.push_back(line);
     }
 
     int status_bruto = pclose(pipe);
