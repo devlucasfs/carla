@@ -9,5 +9,5 @@ output: { format: "native-bin" }
 @extensors
 ' You can put more git repositories here.
 ' Each repository will be checked when you try to install an extensor.
-' "git@github.com:Carla-Corp/extensors.git" is the default (official) repository.
-repositories: [ "git@github.com:Carla-Corp/extensors.git" ]
+' "git@github.com:Carla-repos/extensors.git" is the default (official) repository.
+repositories: [ "git@github.com:Carla-repos/extensors.git" ]

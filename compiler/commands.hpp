@@ -214,8 +214,15 @@ bool Commands::build(CompilerParams& params) {
 
     float seconds = ms.count() / 1000000.0;
 
-    for( std::string line : lines )
-    /* -> */ std::cout << line << std::endl;
+    const std::string suffix = "compila";
+    for( int i = 0; i < lines.size(); i++ ) {
+        std::cout << lines.at(i) << (
+            lines.at(i)
+                .compare( lines.at(i).size() - suffix.size(), suffix.size(), suffix ) == 0
+            ? lines.at(++i) + "\n"
+            : "\n"
+        );
+    }
 
     CompilerOutputs::ClearCurrentLine();
     std::cout << Colorizer::DARK_GREY << "   └─ " << Colorizer::RESET << "Total compilation proccess time: " << Colorizer::BOLD_YELLOW
@@ -242,8 +249,8 @@ bool Commands::init(CompilerParams& params) {
     "@extensors\n"
     "' You can put more git repositories here.\n"
     "' Each repository will be checked when you try to install an extensor.\n"
-    "' \"git@github.com:Carla-Corp/extensors.git\" is the default (official) repository.\n"
-    "repositories: [ \"git@github.com:Carla-Corp/extensors.git\" ]\n";
+    "' \"git@github.com:Carla-repos/extensors.git\" is the default (official) repository.\n"
+    "repositories: [ \"git@github.com:Carla-repos/extensors.git\" ]\n";
 
     target.close();
 

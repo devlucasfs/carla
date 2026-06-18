@@ -471,7 +471,7 @@ install_morgana() {
 
     info "Installing Morgana for ${os}-${arch}..."
 
-    if ! build_repository "https://github.com/lucasFelixSilveira/morgana.git" "morgana" "$arch" "$os" "$temp_dir"; then
+    if ! build_repository "https://github.com/devlucasfs/morgana.git" "morgana" "$arch" "$os" "$temp_dir"; then
         error "Morgana installation failed"
         return 1
     fi
@@ -487,7 +487,7 @@ install_carla() {
 
     info "Installing Carla for ${os}-${arch}..."
 
-    if ! build_repository "https://github.com/lucasFelixSilveira/carla.git" "carla" "$arch" "$os" "$temp_dir"; then
+    if ! build_repository "https://github.com/devlucasfs/carla.git" "carla" "$arch" "$os" "$temp_dir"; then
         error "Carla installation failed"
         return 1
     fi
