@@ -17,7 +17,7 @@ git clone git@github.com:devlucasfs/uplogs.git
 echo cd uplogs
 cd uplogs
 
-cat README.md | { cat; echo "\n# New commit in $PROJECT.\n\`\`\`\n$1\n\`\`\` "; }
+(cat README.md | { cat; echo "\n# New commit in $PROJECT.\n\`\`\`\n$1\n\`\`\` "; } ) > README.md
 
 echo git add .
 git add .
