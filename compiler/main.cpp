@@ -1,4 +1,4 @@
-#include "commands.hpp"
+#include "cli.hpp"
 #include "compiler_outputs.hpp"
 #include "params.hpp"
 

@@ -27,24 +27,42 @@
 # define EXE_SUFFIX std::string()
 #endif
 
-#define COMMANDS_FIELDS \
-    X(version, "use to view the version of the compiler") \
-    X(help, "use to list all available commands") \
-    X(create, "use to create new projects") \
-    X(init, "use to initialize a project") \
-    X(build, "use to build the project as binary") \
-    X(run, "use to run the project")
 
 struct Commands {
     int status = 0;
 
-    static bool help(CompilerParams& params) {
+private: static std::string complementar(bool binary, std::string complement) {
+        if(! binary ) return std::string();
+        return " [" + complement + "] ";
+    }
+
+public: static bool help(CompilerParams& params) {
         std::cout << "\e[1;34mAvailable commands\e[0m:\n";
-        constexpr int padding = 8;
+        constexpr int padding = 20;
         #define X(cmd, desc) \
-        std::cout << "  \e[1;33m" << std::left << std::setw(padding) << #cmd << "\e[0m - \e[1;30m" << desc << "\e[0m\n";
+        std::cout << "  \e[1;33m" << std::left << std::setw(padding) << #cmd << "\e[0m - " << desc << "\e[0m\n";
         COMMANDS_FIELDS
         #undef X
+
+        constexpr int padding2 = 20;
+
+        #define UNARY(flag, _, desc) \
+        std::cout << "  \e[1;34m" << std::left << std::setw(padding) << std::string(std::string("-") + #flag) << "\e[0m - " << desc << "\e[0m\n";
+
+        #define BINARY(flag, _, desc, complement) \
+        std::cout << "  \e[1;34m" << std::left << std::setw(padding) << std::string(std::string("-") + #flag +  " [" + complement + "]") <<"\e[0m - " << desc << "\e[0m\n";
+
+        #define GET_MACRO(_1,_2,_3,_4,NAME,...) NAME
+        #define X(...) GET_MACRO(__VA_ARGS__, BINARY, UNARY)(__VA_ARGS__)
+
+        std::cout << "\n\e[1;32mAvaliable flags\e[0m:\n";
+        FLAGS_FIELDS
+
+        #undef GET_MACRO
+        #undef UNARY
+        #undef BINARY
+        #undef X
+
         return 0;
     }
 

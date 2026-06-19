@@ -1,6 +1,7 @@
 // Isto armazena os dados do compilador
 #pragma once
 
+#include "common.hpp"
 #include "libs/eva.hpp"
 #include <cstring>
 #include <stdexcept>
@@ -11,28 +12,38 @@ public:
     std::string cwd;
     std::string command;
     std::string main;
-    bool optimized;
     std::string target;
     bool verbose;
 
     bool ffi = false;
     std::string c_path;
 
-    CompilerParams(std::string cwd, std::string command, std::string main, bool optimized, std::string target, bool verbose)
+    CompilerParams(std::string cwd, std::string command, std::string main, std::string target, bool verbose)
         : cwd(cwd),
           command(command),
           main(main),
-          optimized(optimized),
           target(target),
           verbose(verbose) {};
 
     static struct CompilerParams format(int argc, char **argv) {
         char *cwd  = argv[0];
         char *command = argv[1];
-        char *main = (char*) "main.crl";
-        char *target = (char*) "unknown";
-        bool optimized = false;
-        bool verbose = false;
+
+        #define UNARY(flag, default, ...) \
+        bool flag = default;
+
+        #define BINARY(flag, default, ...) \
+        char *flag = (char*) default;
+
+        #define GET_MACRO(_1,_2,_3,_4,NAME,...) NAME
+        #define X(...) GET_MACRO(__VA_ARGS__, BINARY, UNARY)(__VA_ARGS__)
+
+        FLAGS_FIELDS
+
+        #undef GET_MACRO
+        #undef BINARY
+        #undef UNARY
+        #undef X
 
         if( std::string(command) == "build" || std::string(command) == "run" ) {
             eva reader("target.eva");
@@ -41,15 +52,36 @@ public:
             } catch(std::runtime_error e) {}
         }
 
-        int i = 2;
-        for(; i < argc; i++ ) {
+        for( int i = 2; i < argc; i++ ) {
             char *arg = argv[i];
-            if( std::strcmp(argv[i], "-m") == 0 && (i + 1) < argc ) main = argv[++i];
-            if( std::strcmp(argv[i], "-o") == 0 && (i + 1) < argc ) target = argv[++i];
-            if( std::strcmp(argv[i], "-O") == 0 ) optimized = true;
-            if( std::strcmp(argv[i], "-v") == 0 ) verbose = true;
+
+            #define MAKE(flag)      \
+            std::string str(#flag); \
+            str = "-" + str;        \
+            auto data = str.c_str()
+
+            #define UNARY(flag,  _, desc)  {                       \
+                MAKE(flag);                                        \
+                if( std::strcmp(argv[i], data) == 0 ) flag = true; \
+            }
+
+            #define BINARY(flag, _, desc, complement) {                                   \
+                MAKE(flag);                                                               \
+                if( std::strcmp(argv[i], data) == 0 && (i + 1) < argc ) flag = argv[++i]; \
+            }
+
+            #define GET_MACRO(_1,_2,_3,_4,NAME,...) NAME
+            #define X(...) GET_MACRO(__VA_ARGS__, BINARY, UNARY)(__VA_ARGS__)
+
+            FLAGS_FIELDS
+
+            #undef GET_MACRO
+            #undef BINARY
+            #undef UNARY
+            #undef MAKE
+            #undef X
         }
 
-        return CompilerParams(cwd, command, main, optimized, target, verbose);
+        return CompilerParams(cwd, command, main, target, verbose);
     }
 } CompilerParams;
