@@ -41,6 +41,7 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr=false);
 #include "./patterns/statement.hpp"
 #include "./patterns/lambda.hpp"
 #include "./patterns/constexpr.hpp"
+#include "parser/patterns/if.hpp"
 
 #include <cstddef>
 #include <sstream>
@@ -84,6 +85,8 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
     case CAST:
     if( macros(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
     else return Err{unknownPattern(ctx, index)};
+    // case IF:
+    // if( _if(CARLA_PATTERN_EXPORT) ) return Some{};
     case _CONST:
     if( const_definition(CARLA_PATTERN_EXPORT) ) return Some{};
     else return Err{unknownPattern(ctx, index)};

@@ -310,6 +310,12 @@ std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS, bool args
         if(
             ctxNode.kind == Common
             && ( (_tk = std::get<Token>(ctxNode.content)).kind == TokenKind::SEMICOLON ||
+                  _tk.kind == TokenKind::EQUAL_EQUAL ||
+                  _tk.kind == TokenKind::BANG_EQUAL ||
+                  _tk.kind == TokenKind::LESS_EQUAL ||
+                  _tk.kind == TokenKind::GREATER_EQUAL ||
+                  _tk.kind == TokenKind::GREATER ||
+                  _tk.kind == TokenKind::LESS ||
                  (_tk.kind == TokenKind::COMMA && args)
             )
         ) {

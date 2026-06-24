@@ -31,12 +31,7 @@
 struct Commands {
     int status = 0;
 
-private: static std::string complementar(bool binary, std::string complement) {
-        if(! binary ) return std::string();
-        return " [" + complement + "] ";
-    }
-
-public: static bool help(CompilerParams& params) {
+    static bool help(CompilerParams& params) {
         std::cout << "\e[1;34mAvailable commands\e[0m:\n";
         constexpr int padding = 20;
         #define X(cmd, desc) \
@@ -192,7 +187,7 @@ bool Commands::build(CompilerParams& params) {
             << Colorizer::BOLD << Colorizer::DARK_GREY << Colorizer::BOLD_YELLOW << " (not compiled yet)";
 
     /* Compile Morgana IR to object file using morgc silently */
-    std::string flgs = ((params.target != "unknown") ? " -o " + params.target : "");
+    std::string flgs = ((params.target != "unknown") ? " -target " + params.target : "");
     if( params.verbose ) flgs += " -v";
     std::string morgcCommand = "morgana build -m " + absPath.string() + flgs;
     if( params.verbose ) CompilerOutputs::Warn("Runnig morgana as " + morgcCommand + "\n");
