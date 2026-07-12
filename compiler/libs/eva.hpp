@@ -74,6 +74,10 @@ public:
         list(EvaValue values)
             : values(values) {}
 
+        list() : values(EvaValue {
+            .tag = eva_nil
+        }) {};
+
         const size_t size() const {
             return eva_get_list_length(values);
         }

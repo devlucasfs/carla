@@ -136,7 +136,22 @@ bool Commands::run(CompilerParams& params) {
 bool Commands::build(CompilerParams& params) {
     auto start = std::chrono::high_resolution_clock::now();
 
+    /* Create target directory if it doesn't exist */
+    auto targetDir = std::filesystem::current_path() / "target";
+    if(! std::filesystem::exists(targetDir) ) std::filesystem::create_directory(targetDir);
+
+    if(! params.precompiler.empty() ) {
+        auto eva = targetDir.parent_path() / "target.eva";
+        auto pco = targetDir / "output.crl.e";
+
+        std::string precompiler = params.precompiler + " \"" + eva.string() + "\" \"" + pco.string() + "\"";
+        std::system(precompiler.c_str());
+
+        params.main = pco.string();
+    }
+
     /* checks if the file is accessible */
+    std::cout << "file can be reached " << params.main << "\n";
     std::ifstream file(params.main, std::ios::binary | std::ios::ate);
     if(! file.is_open() ) CompilerOutputs::Fatal("Your main file is not valid. Try use -m to define the newest file");
 
@@ -157,10 +172,6 @@ bool Commands::build(CompilerParams& params) {
 
     /* Code Generation phase */
     std::string morgIR = generateMorganaCode(irNodes, symbols, false);
-
-    /* Create target directory if it doesn't exist */
-    auto targetDir = std::filesystem::current_path() / "target";
-    if(! std::filesystem::exists(targetDir) ) std::filesystem::create_directory(targetDir);
 
     /* Write Morgana IR to target/output.morg */
     std::ofstream outFile("target/output.morg");
@@ -258,6 +269,17 @@ bool Commands::init(CompilerParams& params) {
     "' You can use here to specify the output format.\n"
     "' Is available: \"native-bin\", \"static-archive\" or \"shared-object\"\n"
     "output: { format: \"native-bin\" }\n"
+    "\n"
+    "@precompiler\n"
+    "' Carla ships with a built-in precompiler that handles the\n"
+    "' language's native preprocessing features. It is always enabled\n"
+    "' and cannot be disabled.\n"
+    "'\n"
+    "' Configure an additional precompiler below to extend the native\n"
+    "' preprocessing pipeline with extra capabilities. `norn` is the\n"
+    "' default extension, but you may replace it with any compatible\n"
+    "' implementation.\n"
+    "name: \"norn\"\n"
     "\n"
     "@extensors\n"
     "' You can put more git repositories here.\n"

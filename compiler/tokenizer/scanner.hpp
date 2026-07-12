@@ -25,33 +25,22 @@ std::vector<Token>
 Scanner::read(std::vector<char> source, std::streamsize size)
 {
     std::map<std::string, TokenKind> keywords = {
-        {"return", RETURN},
-        {"break", BREAK},
-        {"continue", CONTINUE},
-        {"gpio", GPIO},
+        {"return", RETURN}, {"gpio", GPIO},
+        {"break", BREAK}, {"continue", CONTINUE},
 
-        {"struct", STRUCT},
-        {"enum", ENUM},
+        {"struct", STRUCT}, {"enum", ENUM},
 
-        {"false", _FALSE},
-        {"true", _TRUE},
+        {"false", _FALSE}, {"true", _TRUE},
         {"nil", NIL},
 
-        {"our", OUR},
-        {"const", _CONST},
-        {"constexpr", _CONSTEXPR},
-        {"if", IF},
-        {"else", ELSE},
-        {"sizeof", SIZEOF},
-        {"let", LET},
-        {"mut", MUT},
-        {"return", RETURN},
-        {"puts", PUTS},
+        {"our", OUR}, {"const", _CONST},
+        {"constexpr", _CONSTEXPR}, {"namespace", _NAMESPACE},
+        {"if", IF}, {"else", ELSE},
+        {"layout", LAYOUT}, {"let", LET}, {"mut", MUT},
+        {"return", RETURN}, {"puts", PUTS},
 
-        {"@_start", START},
-        {"@cast", CAST},
-        {"@use", USE},
-        {"@import", IMPORT}
+        {"@_start", START}, {"@cast", CAST},
+        {"@detach", DETACH}
     };
 
     std::vector<Token> tokens;

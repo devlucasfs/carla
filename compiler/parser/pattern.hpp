@@ -5,6 +5,7 @@
 #include "ctx.hpp"
 #include "node.hpp"
 #include "symbols.hpp"
+#include "tokenizer/token.hpp"
 #include <iostream>
 #include <variant>
 #include <vector>
@@ -112,8 +113,15 @@ std::string unknownPattern(const std::vector<pContext>* ctx, size_t *index) {
     std::stringstream str;
     std::stringstream buff;
     std::stringstream line;
+    pContext context;
 
-    const pContext& context = (*ctx)[*index];
+    if( *index >= ctx->size() ) {
+        buff << "Token Data not found";
+        line << Colorizer::BOLD_YELLOW << "Carla[Internal<Line(?:Numeric!)>]" << Colorizer::RESET;
+        goto __print_err;
+    }
+
+    context = (*ctx)[*index];
     if( context.kind == Common ) {
         Token tk = std::get<Token>(context.content);
         buff << ((tk.lexeme.length() == 0) ? tokenKindToString(tk.kind) : tk.lexeme);
@@ -123,6 +131,7 @@ std::string unknownPattern(const std::vector<pContext>* ctx, size_t *index) {
         line << Colorizer::BOLD_YELLOW << "Carla[Internal<Line(?:Numeric!)>]" << Colorizer::RESET;
     }
 
+    __print_err:
     str << Colorizer::RED << "Unknown pattern at context index " << *index << " (addr. " << Colorizer::GREEN << index << Colorizer::RED << ')' << Colorizer::RESET << ": '" << buff.str() << "'\n";
     str << Colorizer::DARK_GREY << "└─ " << Colorizer::RESET << "Expected another pattern at line " << line.str() << "\n";
     return str.str();

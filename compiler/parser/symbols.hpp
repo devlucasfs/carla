@@ -19,12 +19,21 @@ namespace carla::symbols {
         const_variable(carla::Type t, carla::InterpreterResult i)
             : type(t), value(i) {};
     };
+
+    struct const_layout {
+        carla::Type type;
+        std::vector<int> detached;
+        ~const_layout() = default;
+        const_layout(carla::Type t, std::vector<int> detached)
+            : type(t), detached(detached) {};
+    };
 };
 
 using Symbol = std::variant<
     std::monostate,
     morgana::type,
     carla::symbols::const_variable,
+    carla::symbols::const_layout,
     carla::symbols::variable
 >;
 
@@ -86,6 +95,6 @@ inline Symbol* Symt::findSymbol(const std::string& name) {
         }
     }
 
-    CompilerOutputs::Warn("cannot find symbol: " + name);
+    CompilerOutputs::Warn("cannot find symbol: " + name + "(" + std::to_string(name.size()) + ")\n");
     return nullptr;
 }

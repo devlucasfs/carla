@@ -4,6 +4,7 @@
 #include "common.hpp"
 #include "libs/eva.hpp"
 #include <cstring>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -13,15 +14,17 @@ public:
     std::string command;
     std::string main;
     std::string target;
+    std::string precompiler;
     bool verbose;
 
     bool ffi = false;
     std::string c_path;
 
-    CompilerParams(std::string cwd, std::string command, std::string main, std::string target, bool verbose)
+    CompilerParams(std::string cwd, std::string command, std::string main, std::string precompiler, std::string target, bool verbose)
         : cwd(cwd),
           command(command),
           main(main),
+          precompiler(precompiler),
           target(target),
           verbose(verbose) {};
 
@@ -49,6 +52,12 @@ public:
             eva reader("target.eva");
             try { auto m = reader.get<std::string>("target", "main");
                   main = (char*) m.c_str();
+                  std::cout << "what " << main;
+            } catch(std::runtime_error e) {}
+
+            try { auto p = reader.get<std::string>("precompiler", "name");
+
+                  precomp = (char*) p.c_str();
             } catch(std::runtime_error e) {}
         }
 
@@ -65,7 +74,7 @@ public:
                 if( std::strcmp(argv[i], data) == 0 ) flag = true; \
             }
 
-            #define BINARY(flag, _, desc, complement) {                                   \
+            #define BINARY(flag, _, desc, __) {                                           \
                 MAKE(flag);                                                               \
                 if( std::strcmp(argv[i], data) == 0 && (i + 1) < argc ) flag = argv[++i]; \
             }
@@ -82,6 +91,6 @@ public:
             #undef X
         }
 
-        return CompilerParams(cwd, command, main, target, verbose);
+        return CompilerParams(cwd, command, main, precomp, target, verbose);
     }
 } CompilerParams;

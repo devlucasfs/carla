@@ -6,6 +6,17 @@ main: "src/main.crl"
 ' Is available: "native-bin", "static-archive" or "shared-object"
 output: { format: "native-bin" }
 
+@precompiler
+' Carla ships with a built-in precompiler that handles the
+' language's native preprocessing features. It is always enabled
+' and cannot be disabled.
+'
+' Configure an additional precompiler below to extend the native
+' preprocessing pipeline with extra capabilities. `norn` is the
+' default extension, but you may replace it with any compatible
+' implementation.
+name: "norn"
+
 @extensors
 ' You can put more git repositories here.
 ' Each repository will be checked when you try to install an extensor.

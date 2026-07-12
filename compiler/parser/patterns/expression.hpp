@@ -2,6 +2,9 @@
 
 #include "../pattern.hpp"
 #include "../nodes/expression.hpp"
+#include "parser/ctx.hpp"
+#include "tokenizer/token.hpp"
+#include "tokenizer/token_kind.hpp"
 #include <cstdlib>
 #include <functional>
 #include <iostream>
@@ -215,11 +218,11 @@ std::tuple<bool, numeric> interpreter_numeric(CARLA_PATTERN_ARGUMENTS, carla::Ex
 }
 
 std::tuple<bool, carla::InterpreterResult> interpreter(CARLA_PATTERN_ARGUMENTS, carla::ExprContext& ast) {
-    auto [str_success, str_result] = interpreter_string(CARLA_PATTERN_EXPORT, ast);
-    if( str_success ) return std::make_tuple(true, str_result);
-
     auto [integer_success, integer_result] = interpreter_numeric(CARLA_PATTERN_EXPORT, ast);
     if( integer_success ) return std::make_tuple(true, integer_result);
+
+    auto [str_success, str_result] = interpreter_string(CARLA_PATTERN_EXPORT, ast);
+    if( str_success ) return std::make_tuple(true, str_result);
 
     return std::make_tuple(false, std::monostate());
 }
@@ -297,10 +300,14 @@ std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS, bool args
     while((*index) < ctx->size()) {
         auto [success, node] = parse_node(CARLA_PATTERN_EXPORT);
 
-        if( success ) {
+        if(success) {
             pNode *heap_alloc = (pNode*) std::malloc(sizeof(pNode));
             *heap_alloc = node;
-            sub.push_back(carla::ExprContext::make_node((void*)heap_alloc));
+
+            sub.push_back(
+                carla::ExprContext::make_node((void*)heap_alloc)
+            );
+
             continue;
         }
 
@@ -309,27 +316,36 @@ std::tuple<bool, carla::ExprContext> make_ast(CARLA_PATTERN_ARGUMENTS, bool args
         Token _tk;
         if(
             ctxNode.kind == Common
-            && ( (_tk = std::get<Token>(ctxNode.content)).kind == TokenKind::SEMICOLON ||
-                  _tk.kind == TokenKind::EQUAL_EQUAL ||
-                  _tk.kind == TokenKind::BANG_EQUAL ||
-                  _tk.kind == TokenKind::LESS_EQUAL ||
-                  _tk.kind == TokenKind::GREATER_EQUAL ||
-                  _tk.kind == TokenKind::GREATER ||
-                  _tk.kind == TokenKind::LESS ||
-                 (_tk.kind == TokenKind::COMMA && args)
+            && (
+                (_tk = std::get<Token>(ctxNode.content)).kind == TokenKind::SEMICOLON ||
+                _tk.kind == TokenKind::EQUAL_EQUAL ||
+                _tk.kind == TokenKind::BANG_EQUAL ||
+                _tk.kind == TokenKind::LESS_EQUAL ||
+                _tk.kind == TokenKind::GREATER_EQUAL ||
+                _tk.kind == TokenKind::GREATER ||
+                _tk.kind == TokenKind::LESS ||
+                (_tk.kind == TokenKind::COMMA && args)
             )
         ) {
             endded = true;
             break;
         }
 
-        sub.push_back(carla::ExprContext::make_value(ctxNode));
+        sub.push_back(
+            carla::ExprContext::make_value(ctxNode)
+        );
     }
 
-    if(! (args || endded) ) CARLA_RETURN_DEFAULT;
-    if( sub.empty() ) CARLA_RETURN_DEFAULT;
+    if(!endded)
+        CARLA_RETURN_DEFAULT;
+
+    if(sub.empty())
+        CARLA_RETURN_DEFAULT;
 
     reorder(sub);
+
+    // deixa o separador para o parser acima
     (*index)--;
+
     return { true, sub[0] };
 }

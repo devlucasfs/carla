@@ -40,7 +40,6 @@ bool _if(CARLA_PATTERN_ARGUMENTS) {
         size_t position = 0;
         while(position < blocks.size()) {
             pNode lhs;
-            std::cout << "\n\nchegou aqui\n\n";
             if(! expression(&lhs, sym, &position, &blocks) ) CARLA_RETURN_DEFAULT;
             if( std::holds_alternative<carla::Expr>(lhs) ) CARLA_RETURN_DEFAULT;
 
