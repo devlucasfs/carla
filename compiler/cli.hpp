@@ -279,7 +279,7 @@ bool Commands::init(CompilerParams& params) {
     "' preprocessing pipeline with extra capabilities. `norn` is the\n"
     "' default extension, but you may replace it with any compatible\n"
     "' implementation.\n"
-    "name: \"norn\"\n"
+    "bin: \"norn\"\n"
     "\n"
     "@extensors\n"
     "' You can put more git repositories here.\n"

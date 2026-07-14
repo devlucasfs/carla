@@ -4,7 +4,6 @@
 #include "common.hpp"
 #include "libs/eva.hpp"
 #include <cstring>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -52,11 +51,9 @@ public:
             eva reader("target.eva");
             try { auto m = reader.get<std::string>("target", "main");
                   main = (char*) m.c_str();
-                  std::cout << "what " << main;
             } catch(std::runtime_error e) {}
 
-            try { auto p = reader.get<std::string>("precompiler", "name");
-
+            try { auto p = reader.get<std::string>("precompiler", "bin");
                   precomp = (char*) p.c_str();
             } catch(std::runtime_error e) {}
         }
