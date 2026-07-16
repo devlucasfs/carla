@@ -36,6 +36,7 @@ Scanner::read(std::vector<char> source, std::streamsize size)
         {"our", OUR}, {"const", _CONST},
         {"constexpr", _CONSTEXPR}, {"namespace", _NAMESPACE},
         {"if", IF}, {"else", ELSE},
+        {"while", WHILE},
         {"layout", LAYOUT}, {"let", LET}, {"mut", MUT},
         {"return", RETURN}, {"puts", PUTS},
 

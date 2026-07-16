@@ -19,6 +19,7 @@ ARCH="${1:-auto}"
 OS="${2:-auto}"
 INSTALL_BASE="${HOME}/.carla"
 INSTALL_BIN="${INSTALL_BASE}/bin"
+INSTALL_STD="${INSTALL_BASE}/std"
 INSTALL_EXTENSORS="${INSTALL_BASE}/extensors"
 
 # ----------------------------------------------------------------------
@@ -496,6 +497,37 @@ install_carla() {
     return 0
 }
 
+install_std() {
+    local arch="$1"
+    local os="$2"
+    local temp_dir="$3"
+
+    info "Installing STD for ${os}-${arch}..."
+
+    git clone "https://github.com/Carla-repos/carla-std.git" 2>/dev/null
+    cp -r carla-std "$INSTALL_STD" 2>/dev/null
+    rm -rf carla-std 2>/dev/null
+
+    success "STD installed successfully"
+    return 0
+}
+
+install_norn() {
+    local arch="$1"
+    local os="$2"
+    local temp_dir="$3"
+
+    info "Installing Norn for ${os}-${arch}..."
+
+    if ! build_repository "https://github.com/devlucasfs/norn.git" "norn" "$arch" "$os" "$temp_dir"; then
+        error "Norn installation failed"
+        return 1
+    fi
+
+    success "Norn installed successfully"
+    return 0
+}
+
 # ----------------------------------------------------------------------
 #  VERIFICATION FUNCTIONS
 # ----------------------------------------------------------------------
@@ -651,7 +683,7 @@ EOF
     # Remove old installation if exists
     if [ -d "$INSTALL_BASE" ]; then
         warning "Existing installation found at $INSTALL_BASE"
-        if prompt_yn "Remove and reinstall?" "N"; then
+        if prompt_yn "Remove and reinstall?" "Y"; then
             rm -rf "$INSTALL_BASE"
             info "Removed old installation"
         else
@@ -684,6 +716,20 @@ EOF
     info "Installing Carla..."
     if ! install_carla "$ARCH" "$OS" "$TEMP_DIR"; then
         error "Carla installation failed"
+        exit 1
+    fi
+
+    # Install Norn
+    info "Installing Norn..."
+    if ! install_norn "$ARCH" "$OS" "$TEMP_DIR"; then
+        error "Norn installation failed"
+        exit 1
+    fi
+
+    # Install STD
+    info "Installing STD..."
+    if ! install_std "$ARCH" "$OS" "$TEMP_DIR"; then
+        error "STD installation failed"
         exit 1
     fi
 

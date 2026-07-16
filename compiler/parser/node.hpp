@@ -2,12 +2,10 @@
 
 #include <variant>
 #include "nodes/declaration.hpp"
-#include "nodes/expression.hpp"
+#include "nodes/namespace.hpp"
 #include "nodes/statement.hpp"
 #include "nodes/start.hpp"
-#include "nodes/call.hpp"
 #include "nodes/lambda.hpp"
-#include "nodes/comptime.hpp"
 
 namespace carla {
     struct Nop { Nop() = default; };
@@ -18,10 +16,8 @@ namespace carla {
     X(carla::Decl, DECLARATION) \
     X(carla::Lambda, LAMBDA) \
     X(carla::Start, COMPTIME_START) \
-    X(carla::Expr, EXPRESSION) \
     X(carla::Stmt, STATEMENT) \
-    X(carla::Call, CALL) \
-    X(carla::ComptimeValue, COMPTIME_VALUE)
+    X(carla::Ns, NS)
 
 #define X(type, ...) , type
 using pNode = std::variant<std::monostate CARLA_PNODE_CASE>;

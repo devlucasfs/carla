@@ -43,3 +43,6 @@ git commit -m "update($PROJECT): $1"
 
 echo "git push origin main"
 git push origin main
+
+echo "rm -rf uplogs"
+rm -rf uplogs

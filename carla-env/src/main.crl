@@ -1,4 +1,2 @@
-@_start
-void main = () {
-	puts ..@import("./msg");
-}
+void main = () {};
+..@import("./other.crl");

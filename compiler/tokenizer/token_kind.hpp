@@ -67,6 +67,7 @@
     X(CONTINUE, "continue") \
     X(GPIO, "gpio") \
     X(IF, "if") \
+    X(WHILE, "while") \
     X(_CONST, "const") \
     X(_CONSTEXPR, "constexpr") \
     X(ELSE, "else") \

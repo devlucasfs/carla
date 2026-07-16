@@ -151,7 +151,6 @@ bool Commands::build(CompilerParams& params) {
     }
 
     /* checks if the file is accessible */
-    std::cout << "file can be reached " << params.main << "\n";
     std::ifstream file(params.main, std::ios::binary | std::ios::ate);
     if(! file.is_open() ) CompilerOutputs::Fatal("Your main file is not valid. Try use -m to define the newest file");
 

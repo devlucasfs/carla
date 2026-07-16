@@ -33,16 +33,11 @@
 
 Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr=false);
 
-#include "../charset.hpp"
-
+#include "parser/patterns/namespace.hpp"
 #include "./patterns/declaration.hpp"
-#include "./patterns/expression.hpp"
-#include "./patterns/macros.hpp"
-#include "./patterns/call.hpp"
 #include "./patterns/statement.hpp"
 #include "./patterns/lambda.hpp"
-#include "./patterns/constexpr.hpp"
-#include "parser/patterns/if.hpp"
+#include "./patterns/macros.hpp"
 
 #include <cstddef>
 #include <sstream>
@@ -56,12 +51,9 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
     if( expr && context.kind == Common ) {
         Token tk = std::get<Token>(context.content);
         switch(tk.kind) {
-        case CAST:
-        if( macros(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
-        else return Err{unknownPattern(ctx, index)};
-        case IDENTIFIER:
-        if( call(CARLA_PATTERN_EXPORT) ) return Some{};
-        else return Err{unknownPattern(ctx, index)};
+        // case IDENTIFIER:
+        // if( call(CARLA_PATTERN_EXPORT) ) return Some{};
+        // else return Err{unknownPattern(ctx, index)};
         default: return Err{""};
         }
     }
@@ -69,7 +61,7 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
     if( context.kind == Block ) {
         if( lambda(CARLA_PATTERN_EXPORT) ) return Some{};
         else if( declaration(CARLA_PATTERN_EXPORT) ) return Some{};
-        else if( expression(CARLA_PATTERN_EXPORT) ) return Some{};
+        // else if( expression(CARLA_PATTERN_EXPORT) ) return Some{};
         else return Err{unknownPattern(ctx, index)};
     }
 
@@ -83,26 +75,22 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
         return Some{};
     };
     case START:
-    case CAST:
     if( macros(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
-    else return Err{unknownPattern(ctx, index)};
-    // case IF:
-    // if( _if(CARLA_PATTERN_EXPORT) ) return Some{};
-    case _CONST:
-    if( const_definition(CARLA_PATTERN_EXPORT) ) return Some{};
     else return Err{unknownPattern(ctx, index)};
     case PUTS:
     if( statement(CARLA_PATTERN_EXPORT, "puts") ) return Some{};
     else return Err{unknownPattern(ctx, index)};
+    case _NAMESPACE:
+    if( _namespace(CARLA_PATTERN_EXPORT) ) return Some{};
     case IDENTIFIER:
     // if( call(CARLA_PATTERN_EXPORT) ) return Some{};
     if( declaration(CARLA_PATTERN_EXPORT) ) return Some{};
     else return Err{unknownPattern(ctx, index)};
-    case INTEGER:
-    case _FLOAT:
-    case STRING:
-    if( expression(CARLA_PATTERN_EXPORT) ) return Some{};
-    else return Err{unknownPattern(ctx, index)};
+    // case INTEGER:
+    // case _FLOAT:
+    // case STRING:
+    // if( expression(CARLA_PATTERN_EXPORT) ) return Some{};
+    // else return Err{unknownPattern(ctx, index)};
     default: return Err{unknownPattern(ctx, index)};
     }
 

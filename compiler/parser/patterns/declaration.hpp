@@ -2,6 +2,7 @@
 #include "type.hpp"
 #include "../nodes/declaration.hpp"
 #include "../pattern.hpp"
+#include <iostream>
 
 bool declaration(CARLA_PATTERN_ARGUMENTS) {
     CARLA_PATTERN_STARTS(bool, false);

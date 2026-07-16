@@ -8,7 +8,6 @@ enum TokenCtxKind { Common, Block };
 struct pTokenCtx;
 using TokenContent = std::variant<Token, std::vector<pTokenCtx>>;
 
-
 struct pTokenCtx {
     TokenCtxKind kind;
     TokenContent content;

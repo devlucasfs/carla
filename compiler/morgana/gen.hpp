@@ -13,6 +13,8 @@
 
 #include "../libs/morgana/builder.hpp"
 #include "../libs/morgana.hpp"
+#include "abi/symbols.hpp"
+#include "parser/nodes/type.hpp"
 
 enum reason_t { VAR_DECLARATION };
 using variable_id = size_t;
@@ -35,39 +37,20 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
 
         switch(node.index()) {
             case COMPTIME_START: builder << morgana::comptime("_start"); break;
-            case EXPRESSION: {
-                auto expr = std::get<carla::Expr>(node);
+            case NS: {
+                std::vector<pNode> statement;
+                auto ns = std::get<carla::Ns>(node);
+                Parser::checkSyntax(symbols, &statement, ns.body, false);
 
-                bool already_d_make = false;
-                if( expr.is_static && std::holds_alternative<std::string>(expr.data) ) {
-                    auto text = std::get<std::string>(expr.data);
-                    builder << morgana::static_declaration(&storage, std::get<std::string>(expr.data));
-                    already_d_make = true;
-                }
+                carla::abi::ns::entry(ns.identifier);
 
-                size_t value_index;
-                if( already_d_make ) value_index = morgana::last(&storage, "expr");
-                else if(! expr.is_static ) {
-                    // value_index = make_expr(expr.ast);
-                    // already_d_make = true;
-                }
+                Context ctx;
+                ctx << generateMorganaCode(statement, symbols, true);
+                builder << ctx.string();
 
-                auto [ reason, data ] = stack_reason.top();
-                stack_reason.pop();
-                switch(reason) {
-                    case VAR_DECLARATION: {
-                        if( already_d_make ) {
-                            builder << morgana::store(morgana::last(&storage, "alloc"), value_index);
-                            continue;
-                        }
+                carla::abi::ns::pop();
+            } continue;
 
-                        if( expr.is_static && std::holds_alternative<numeric>(expr.data) )
-                        /* -> */ builder << morgana::store_literal(morgana::last(&storage, "alloc"), std::get<numeric>(expr.data).value<numeric::integer>());
-
-                        continue;
-                    } break;
-                }
-            } break;
             case DECLARATION: {
                 auto decl = std::get<carla::Decl>(node);
 
@@ -85,14 +68,14 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
 
                     Context ctx;
                     ctx << generateMorganaCode(statement, symbols, true);
-                    builder << morgana::function(&storage, decl.identiifer, decl.type.morgana, types, ctx);
+                    builder << morgana::function(&storage, carla::abi::function(decl.identifier), decl.type.morgana, types, ctx);
                     index++;
                     continue;
                 }
 
                 builder << morgana::alloc(&storage, decl.type.morgana);
                 size_t alloc = (storage.variable.top() - 1);
-                vmap.insert({ decl.identiifer, { alloc, decl.type } });
+                vmap.insert({ decl.identifier, { alloc, decl.type } });
                 if( decl.k == carla::Decl::Hopefull ) stack_reason.push({
                     VAR_DECLARATION,
                     declaration_t { morgana::last(&storage, "alloc"), decl.type.morgana }
@@ -104,15 +87,15 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
                 auto stmt = std::get<carla::Stmt>(node);
                 switch(stmt.data) {
                     case carla::STMT_PUTS: {
-                        auto err = [](){ CompilerOutputs::Fatal("Expected a string static expression after puts statement"); };
-                        if( (index + 1) >= nodes.size() ) err();
+                        // auto err = [](){ CompilerOutputs::Fatal("Expected a string static expression after puts statement"); };
+                        // if( (index + 1) >= nodes.size() ) err();
 
-                        auto expr = std::get<carla::Expr>(nodes[index + 1]);
-                        if(! expr.is_static ) err();
+                        // auto expr = std::get<carla::Expr>(nodes[index + 1]);
+                        // if(! expr.is_static ) err();
 
-                        if(! std::holds_alternative<std::string>(expr.data) ) err();
-                        builder << morgana::puts(&storage, std::get<std::string>(expr.data));
-                        index++;
+                        // if(! std::holds_alternative<std::string>(expr.data) ) err();
+                        // builder << morgana::puts(&storage, std::get<std::string>(expr.data));
+                        // index++;
                     } break;
                 }
             } break;
