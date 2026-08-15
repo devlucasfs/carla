@@ -3,7 +3,6 @@
 #include "./parser/symbols.hpp"
 #include "libs/morgana.hpp"
 #include "libs/morgana/types.hpp"
-#include <memory>
 
 #define CARLA_CHARSET_EXPORTS_FIELDS \
     X(utf8, "asciz")

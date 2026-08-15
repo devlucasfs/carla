@@ -1,7 +1,9 @@
 #pragma once
 #include "../nodes/lambda.hpp"
 #include "../pattern.hpp"
+#include "tokenizer/token_kind.hpp"
 #include "type.hpp"
+#include <cstdlib>
 #include <tuple>
 
 bool lambda(CARLA_PATTERN_ARGUMENTS) {
@@ -38,6 +40,11 @@ bool lambda(CARLA_PATTERN_ARGUMENTS) {
     if( body.kind != Block ) CARLA_RETURN_DEFAULT;
     auto vBody = std::get<std::vector<pContext>>(body.content);
 
-    *result = carla::Lambda(t, vBody);
+    CARLA_PEEK_NEXT(semi, _default);
+    if( semi.kind != Common ) CARLA_RETURN_DEFAULT;
+    if( std::get<Token>(semi.content).kind != SEMICOLON ) CARLA_RETURN_DEFAULT;
+
+    file_stack* fstack_cp = new file_stack(fstack);
+    *result = carla::Lambda(t, vBody, static_cast<void*>(fstack_cp));
     return true;
 }

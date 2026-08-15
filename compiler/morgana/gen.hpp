@@ -1,7 +1,5 @@
 #pragma once
 
-#include <functional>
-#include <iostream>
 #include <stack>
 #include <unordered_map>
 #include <variant>
@@ -15,6 +13,7 @@
 #include "../libs/morgana.hpp"
 #include "abi/symbols.hpp"
 #include "parser/nodes/type.hpp"
+#include "parser/pattern.hpp"
 
 enum reason_t { VAR_DECLARATION };
 using variable_id = size_t;
@@ -57,7 +56,12 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
                 if( decl.k == carla::Decl::Hopefull && (index + 1) < nodes.size() && nodes[index + 1].index() == LAMBDA ) {
                     auto lambda = std::get<carla::Lambda>(nodes[index + 1]);
                     std::vector<pNode> statement;
+
+                    special_fstack = lambda.fstack_copy;
                     Parser::checkSyntax(symbols, &statement, lambda.body, false);
+
+                    if( lambda.fstack_copy != NULL )
+                    /* -> */ std::free(lambda.fstack_copy);
 
                     std::vector<morgana::type> types;
                     std::vector<std::string> identifiers;

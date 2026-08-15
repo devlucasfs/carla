@@ -41,7 +41,10 @@ Scanner::read(std::vector<char> source, std::streamsize size)
         {"return", RETURN}, {"puts", PUTS},
 
         {"@_start", START}, {"@cast", CAST},
-        {"@detach", DETACH}
+        {"@detach", DETACH},
+
+        {"@popfile", POP_F}, { "@pushfile", PUSH_F },
+        {"@lnrepeat", LNREPEAT}
     };
 
     std::vector<Token> tokens;

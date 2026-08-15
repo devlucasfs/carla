@@ -85,6 +85,10 @@
     X(CAST, "@cast") \
     X(DETACH, "@detach") \
     \
+    X(PUSH_F, "@pushfile") \
+    X(POP_F, "@popfile") \
+    X(LNREPEAT, "@lnrepeat") \
+    \
     X(CARLA_EOF, "<eof>") \
     X(UNKNOWN_TK, "<unknown>")
 

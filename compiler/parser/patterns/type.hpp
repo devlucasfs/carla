@@ -11,7 +11,6 @@
 
 #include "../../libs/morgana/types.hpp"
 
-
 std::tuple<bool, morgana::type, std::string>
 typement(CARLA_PATTERN_ARGUMENTS) {
     auto d = std::make_tuple(false, std::monostate(), std::string());
