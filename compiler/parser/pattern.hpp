@@ -4,7 +4,6 @@
 
 #include "ctx.hpp"
 #include "node.hpp"
-#include "params.hpp"
 #include "symbols.hpp"
 #include "tokenizer/token.hpp"
 #include <algorithm>
@@ -13,7 +12,6 @@
 #include <iostream>
 #include <stack>
 #include <string>
-#include <variant>
 #include <vector>
 
 #define CARLA_PATTERN_ARGUMENTS pNode *result, Symt *sym, size_t *index, const std::vector<pContext>* ctx
@@ -31,7 +29,7 @@
 
 
 #define CARLA_PEEK_NEXT(id, val) if( *index >= ctx->size() ) return val; \
-                                  auto id = (*ctx)[*index]
+                                 auto id = (*ctx)[*index]
 
 #include "../utils/result.hpp"
 #include "../compiler_outputs.hpp"
@@ -70,35 +68,30 @@ static void pop_fstack(line_t line) {
 #define NORMALIZE_LINES(x) std::clamp<line_t>(x, 1, LONG_MAX)
 
 static file_stack_child get_fline_by_stack(Token token) {
-    if( special_fstack != NULL ) {
-        auto stack = static_cast<file_stack*>(special_fstack);
-        if( stack->size() == 0 ) return { "Entry file", NORMALIZE_LINES(token.line - dead_lines), 0 };
+    auto stack =
+        (special_fstack != NULL)
+        ? static_cast<file_stack*>(special_fstack)
+        : &fstack;
 
-        auto [ file, line, x ] = stack->top();
-        auto relative = std::filesystem::relative(file).string();
-        return { relative.empty() ? file : relative, NORMALIZE_LINES(token.line - line), x };
-    }
+    if( stack->size() == 0 ) return {
+        std::filesystem::relative(absolute_main_file).string(),
+        NORMALIZE_LINES(token.line - dead_lines), 0
+    };
 
-    if( fstack.size() == 0 ) return { "Entry file", NORMALIZE_LINES(token.line - dead_lines), 0 };
-
-    auto [ file, line, x ] = fstack.top();
+    auto [ file, line, x ] = stack->top();
     auto relative = std::filesystem::relative(file).string();
     return { relative.empty() ? file : relative, NORMALIZE_LINES(token.line - line), x };
 }
 
 static void sum_fline_by_stack(Token token, line_t sum) {
-    auto stack = get_fline_by_stack(token);
+    auto stack =
+        (special_fstack != NULL)
+        ? static_cast<file_stack*>(special_fstack)
+        : &fstack;
 
-    auto [ x, y, z ] = stack;
-    if( special_fstack != NULL ) {
-        auto stack = static_cast<file_stack*>(special_fstack);
-        if( stack->size() > 0 ) stack->pop();
-    } else if( fstack.size() > 0 ) fstack.pop();
-
-    ((special_fstack != NULL)
-        ?  static_cast<file_stack*>(special_fstack)
-        : &fstack
-    )->push({ x, y, z + sum });
+    auto [ x, y, z ] = get_fline_by_stack(token);
+    if( stack->size() > 0 ) stack->pop();
+    stack->push({ x, y, z + sum });
 }
 
 std::string unknownPattern(const std::vector<pContext>* ctx, size_t *index);
@@ -173,7 +166,7 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
     case SEMICOLON: {
         (*index)++;
         result->~pNode();
-        new(result) pNode(std::monostate());
+        new(result) pNode(carla::Nop());
         return Some{};
     };
     case START:

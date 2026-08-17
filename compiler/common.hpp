@@ -1,8 +1,14 @@
 #pragma once
+#include <filesystem>
 #include <string>
 
 const std::string CARLA_VERSION = "26.0 alpha";
 const std::string CARLA_PS = "still in development";
+
+// Not constant data fields
+static std::string absolute_main_file = std::filesystem::absolute("./src/main.crl").string();
+
+// Flags
 
 #define FLAGS_FIELDS                                                                                              \
     X(target,  "uknown",   "use to define the output format based on your extensors", "extensor")                 \

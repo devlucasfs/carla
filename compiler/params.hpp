@@ -4,6 +4,7 @@
 #include "common.hpp"
 #include "libs/eva.hpp"
 #include <cstring>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 
@@ -88,6 +89,7 @@ public:
             #undef X
         }
 
+        absolute_main_file = std::filesystem::absolute(main).string();
         return CompilerParams(cwd, command, main, precomp, target, verbose);
     }
 } CompilerParams;
