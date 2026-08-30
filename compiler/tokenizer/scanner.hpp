@@ -41,7 +41,7 @@ Scanner::read(std::vector<char> source, std::streamsize size)
         {"return", RETURN}, {"puts", PUTS},
 
         {"@_start", START}, {"@cast", CAST},
-        {"@detach", DETACH},
+        {"@iftarget", IF_TARGET},
 
         {"@popfile", POP_F}, { "@pushfile", PUSH_F },
         {"@lnrepeat", LNREPEAT}

@@ -1,6 +1,6 @@
 [
   {
-    "file": "main.cpp",
+    "file": "compiler/main.cpp",
     "arguments": [
       "/usr/bin/g++",
       "-std=c++17",
@@ -9,12 +9,12 @@
       "-fPIC",
       "-fpermissive",
       "-fexceptions",
-      "main.cpp",
+      "compiler/main.cpp",
       "-o",
-      "../build/carla",
-      "-I."
+      "./build/carla",
+      "-I./compiler/"
     ],
-    "directory": "/home/dev_lucasfs/Documents/carla/compiler",
-    "output": "../build/carla"
+    "directory": "/home/dev_lucasfs/Documents/carla",
+    "output": "./build/carla"
   }
 ]

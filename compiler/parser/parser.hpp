@@ -78,6 +78,15 @@ Result Parser::checkSyntax(Symt& symbols, std::vector<pNode> *nodes, std::vector
         if( isSuccess(match) ) {
             nodes->push_back(node);
             skip = index - old;
+
+            #define X(kind) case kind: { last_one_compatible_with_then = true; } break;
+            switch(node.index()) {
+                CARLA_THEN_COMPATIBLE_NODE_KINDS
+                default: last_one_compatible_with_then = false;
+            }
+            #undef X
+
+            if( last_one_compatible_with_then ) skip--;
             continue;
         } else {
             CompilerOutputs::Fatal(err(match));

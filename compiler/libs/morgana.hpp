@@ -96,6 +96,13 @@ namespace morgana {
         ss << "comptime " << identifier << "\n";
     });
 
+    morgana_func(quote, (
+        std::string quote,
+        std::string statement
+    ), {
+        ss << "quote " << statement << " " << quote << " {\n";
+    });
+
     morgana_func(puts, (
         Storage *storage,
         std::string string

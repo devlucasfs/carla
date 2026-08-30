@@ -18,7 +18,7 @@ namespace morgana {
     struct integer {
         int bits;
         bool sign;
-        integer(int bits) : bits(bits), sign(false) {}
+        integer(int bits) : bits(bits), sign(true) {}
         integer(int bits, bool sign) : bits(bits), sign(sign) {}
         ~integer() = default;
     };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <stack>
 #include <unordered_map>
 #include <variant>
@@ -12,8 +13,12 @@
 #include "../libs/morgana/builder.hpp"
 #include "../libs/morgana.hpp"
 #include "abi/symbols.hpp"
+#include "compiler_outputs.hpp"
+#include "parser/nodes/morgana/quote.hpp"
+#include "parser/nodes/statement.hpp"
 #include "parser/nodes/type.hpp"
 #include "parser/pattern.hpp"
+#include "tokenizer/token_kind.hpp"
 
 enum reason_t { VAR_DECLARATION };
 using variable_id = size_t;
@@ -35,6 +40,26 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
         pNode node = nodes[index];
 
         switch(node.index()) {
+            case MORG_QUOTE: {
+                auto quote = std::get<carla::morgana::Quote>(node);
+                auto data =
+                    (quote.kind == IF_TARGET)
+                    ? "iftarget"
+                    : "";
+
+                builder << morgana::quote( quote.quote, data );
+
+                if( nodes.size() <= (index + 1) || nodes[index + 1].index() != THEN )
+                    CompilerOutputs::Fatal("@" + std::string(data) + " should be used before a THEN (`:`) operator.");
+
+                if( nodes.size() <= (index + 2) )
+                    CompilerOutputs::Fatal("after a THEN (`:`) operator, you should to use some expression.");
+
+                std::vector<pNode> after { nodes[index + 2] };
+                std::string final = generateMorganaCode(after, symbols, internal);
+                builder << final + "\n}\n";
+            } break;
+
             case COMPTIME_START: builder << morgana::comptime("_start"); break;
             case NS: {
                 std::vector<pNode> statement;

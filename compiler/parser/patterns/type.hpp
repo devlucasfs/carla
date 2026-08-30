@@ -36,7 +36,7 @@ typement(CARLA_PATTERN_ARGUMENTS) {
             }
 
             auto carla = std::get<2>(current);
-            return { true, morgana::ptr(), carla + std::string(lvl, '*') };
+            return { true, morgana::ptr(), carla + std::string('*', lvl) };
         }
 
         return current;

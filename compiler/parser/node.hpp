@@ -2,10 +2,12 @@
 
 #include <variant>
 #include "nodes/declaration.hpp"
+#include "nodes/morgana/quote.hpp"
 #include "nodes/namespace.hpp"
 #include "nodes/statement.hpp"
 #include "nodes/start.hpp"
 #include "nodes/lambda.hpp"
+#include "parser/nodes/then.hpp"
 
 namespace carla {
     struct Nop { Nop() = default; };
@@ -17,7 +19,9 @@ namespace carla {
     X(carla::Lambda, LAMBDA) \
     X(carla::Start, COMPTIME_START) \
     X(carla::Stmt, STATEMENT) \
-    X(carla::Ns, NS)
+    X(carla::Ns, NS) \
+    X(carla::morgana::Quote, MORG_QUOTE) \
+    X(carla::Then, THEN)
 
 #define X(type, ...) , type
 using pNode = std::variant<std::monostate CARLA_PNODE_CASE>;

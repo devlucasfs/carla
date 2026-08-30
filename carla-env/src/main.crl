@@ -1,4 +1,4 @@
+..@import("./other.crl");
+
 @_start
 void main = () {};
-..@import("./other.crl");
-void dapodkasop = () {};

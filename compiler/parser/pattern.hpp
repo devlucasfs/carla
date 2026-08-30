@@ -4,6 +4,7 @@
 
 #include "ctx.hpp"
 #include "node.hpp"
+#include "parser/nodes/then.hpp"
 #include "symbols.hpp"
 #include "tokenizer/token.hpp"
 #include <algorithm>
@@ -13,6 +14,11 @@
 #include <stack>
 #include <string>
 #include <vector>
+
+#define CARLA_THEN_COMPATIBLE_NODE_KINDS \
+    X(MORG_QUOTE)
+
+static bool last_one_compatible_with_then = false;
 
 #define CARLA_PATTERN_ARGUMENTS pNode *result, Symt *sym, size_t *index, const std::vector<pContext>* ctx
 #define CARLA_PATTERN_EXPORT result, sym, index, ctx
@@ -44,7 +50,9 @@ line_t dead_lines = 0;
 file_stack fstack;
 
 void *special_fstack = NULL;
+extern std::string absolute_main_file; // Forward declaration
 
+#include "parser/patterns/iftarget.hpp"
 #include "parser/patterns/namespace.hpp"
 #include "./patterns/declaration.hpp"
 #include "./patterns/statement.hpp"
@@ -99,6 +107,8 @@ std::string unknownPattern(const std::vector<pContext>* ctx, size_t *index);
 Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
     const pContext& context = (*ctx)[*index];
 
+    std::cout << "ENTROU AQUI\n";
+
     if( expr && context.kind == Block ) return Err{""};
     if( expr && context.kind == Common ) {
         Token tk = std::get<Token>(context.content);
@@ -113,11 +123,18 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
     if( context.kind == Block ) {
         if( lambda(CARLA_PATTERN_EXPORT) ) return Some{};
         else if( declaration(CARLA_PATTERN_EXPORT) ) return Some{};
-        // else if( expression(CARLA_PATTERN_EXPORT) ) return Some{};
         else return Err{unknownPattern(ctx, index)};
     }
 
     Token tk = std::get<Token>(context.content);
+
+    if( tk.kind == COLON && last_one_compatible_with_then ) {
+        (*index)++;
+        result->~pNode();
+        new (result) pNode(carla::Then());
+        return Some{};
+    }
+
     switch(tk.kind) {
     case PUSH_F: {
         if( *index >= ctx->size() ) CompilerOutputs::Fatal("You can't push `@void`");
@@ -169,14 +186,19 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
         new(result) pNode(carla::Nop());
         return Some{};
     };
+
     case START:
     if( macros(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
+    else return Err{unknownPattern(ctx, index)};
+    case IF_TARGET:
+    if( morgana_comptime(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
     else return Err{unknownPattern(ctx, index)};
     case PUTS:
     if( statement(CARLA_PATTERN_EXPORT, "puts") ) return Some{};
     else return Err{unknownPattern(ctx, index)};
     case _NAMESPACE:
     if( _namespace(CARLA_PATTERN_EXPORT) ) return Some{};
+    else return Err{unknownPattern(ctx, index)};
     case IDENTIFIER:
     // if( call(CARLA_PATTERN_EXPORT) ) return Some{};
     if( declaration(CARLA_PATTERN_EXPORT) ) return Some{};

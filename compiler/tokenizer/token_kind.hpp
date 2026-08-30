@@ -19,7 +19,7 @@
     X(STAR, "*") \
     X(PLUS_PLUS, "++") \
     X(MINUS_MINUS, "--") \
-    X(QUAD, "****") \
+    X(QUAD, "::") \
 \
     X(ITERABLE, "..") \
     X(COLON, ":") \
@@ -83,7 +83,7 @@
     \
     X(START, "@_start") \
     X(CAST, "@cast") \
-    X(DETACH, "@detach") \
+    X(IF_TARGET, "@iftarget") \
     \
     X(PUSH_F, "@pushfile") \
     X(POP_F, "@popfile") \

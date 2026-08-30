@@ -23,16 +23,18 @@ Unlike languages that are simple to embed, such as C, Carla has a different obje
 Carla have some CLI commands, like:
 - `build`: Build the project
 - `run`: Build and run the project
-- `init`: Create the `target.toml` file, and make an template project
+- `init`: Create the `target.eva` file, and make an template project
+- `create`: Create the project folder and their template files
 
 ### Compilation flags
-- `-v`: Build the project with verbose output
-- `-o`: Define the target architecture
-- `-m`: Define the main file
+- `-target`: Use to define the target architecture
+- `-verbose`: Build the project with verbose output
+- `-precomp`: You can define your pre-compiler as some binary
+- `-main`: Define the main file
 
 ### [**Morgana**](https://github.com/lucasFelixSilveira/morgana) also is important to know
 - `build`: Build the project
-- `install`: Use it to install a new extensor by the git did config on `target.toml`
+- `install`: Use it to install a new extensor by the git did config on `target.eva`
 
 ### Compilation flags
 - `-v`: Build the project with verbose output
