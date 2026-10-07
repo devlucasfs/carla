@@ -21,7 +21,7 @@
     X(MINUS_MINUS, "--") \
     X(QUAD, "::") \
 \
-    X(ITERABLE, "..") \
+    X(ITER_CONCAT, "..") \
     X(COLON, ":") \
     X(COLON_EQUAL, ":=") \
  \
@@ -71,7 +71,7 @@
     X(_CONST, "const") \
     X(_CONSTEXPR, "constexpr") \
     X(ELSE, "else") \
-    X(LAYOUT, "layout") \
+    X(SYSCALL, "syscall!") \
     X(LET, "let") \
     X(MUT, "mut") \
     X(END_KEYWORDS, "<end_keywords>") \
@@ -83,11 +83,9 @@
     \
     X(START, "@_start") \
     X(CAST, "@cast") \
-    X(IF_TARGET, "@iftarget") \
     \
     X(PUSH_F, "@pushfile") \
     X(POP_F, "@popfile") \
-    X(LNREPEAT, "@lnrepeat") \
     \
     X(CARLA_EOF, "<eof>") \
     X(UNKNOWN_TK, "<unknown>")
@@ -116,8 +114,18 @@ TokenSubKind getSub(TokenKind kind) {
     }
 }
 
+
+std::string kindKeywordToString(TokenKind kind) {
+    #define X(id, content) case id: return content;
+    switch(kind) { CARLA_FIELDS_TOKENS_KIND }
+    #undef X
+    return "";
+}
+
+
 std::string tokenKindToString(TokenKind kind) {
     #define X(id, _) case id: return #id;
     switch(kind) { CARLA_FIELDS_TOKENS_KIND }
     #undef X
+    return "";
 }

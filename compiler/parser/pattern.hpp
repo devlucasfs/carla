@@ -6,6 +6,7 @@
 #include "node.hpp"
 #include "parser/nodes/then.hpp"
 #include "symbols.hpp"
+#include "tokenizer/scanner.hpp"
 #include "tokenizer/token.hpp"
 #include <algorithm>
 #include <climits>
@@ -43,18 +44,17 @@ static bool last_one_compatible_with_then = false;
 
 Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr=false);
 
-using line_t = long;
-using file_stack_child = std::tuple<std::string, line_t, line_t>;
-using file_stack = std::stack<file_stack_child>;
-line_t dead_lines = 0;
-file_stack fstack;
+long current_line = 0;
+long less_lines = 0;
+
+std::stack<std::tuple<std::string, long>> file_stack;
 
 void *special_fstack = NULL;
-extern std::string absolute_main_file; // Forward declaration
+extern std::string absolute_main_file;
 
-#include "parser/patterns/iftarget.hpp"
 #include "parser/patterns/namespace.hpp"
 #include "./patterns/declaration.hpp"
+#include "./patterns/expressions.hpp"
 #include "./patterns/statement.hpp"
 #include "./patterns/lambda.hpp"
 #include "./patterns/macros.hpp"
@@ -62,52 +62,10 @@ extern std::string absolute_main_file; // Forward declaration
 #include <cstddef>
 #include <sstream>
 
-static void push_fstack(std::string filepath, line_t line) {
-    fstack.push({ filepath.substr(1, filepath.length() - 2), line, 0 });
-}
-
-static void pop_fstack(line_t line) {
-    if( fstack.size() == 0 ) CompilerOutputs::Fatal("There is nothing to be popped");
-    auto [ _, old, extra ] = fstack.top();
-    dead_lines += line - old + extra;
-    fstack.pop();
-}
-
-#define NORMALIZE_LINES(x) std::clamp<line_t>(x, 1, LONG_MAX)
-
-static file_stack_child get_fline_by_stack(Token token) {
-    auto stack =
-        (special_fstack != NULL)
-        ? static_cast<file_stack*>(special_fstack)
-        : &fstack;
-
-    if( stack->size() == 0 ) return {
-        std::filesystem::relative(absolute_main_file).string(),
-        NORMALIZE_LINES(token.line - dead_lines), 0
-    };
-
-    auto [ file, line, x ] = stack->top();
-    auto relative = std::filesystem::relative(file).string();
-    return { relative.empty() ? file : relative, NORMALIZE_LINES(token.line - line), x };
-}
-
-static void sum_fline_by_stack(Token token, line_t sum) {
-    auto stack =
-        (special_fstack != NULL)
-        ? static_cast<file_stack*>(special_fstack)
-        : &fstack;
-
-    auto [ x, y, z ] = get_fline_by_stack(token);
-    if( stack->size() > 0 ) stack->pop();
-    stack->push({ x, y, z + sum });
-}
-
 std::string unknownPattern(const std::vector<pContext>* ctx, size_t *index);
 
 Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
     const pContext& context = (*ctx)[*index];
-
-    std::cout << "ENTROU AQUI\n";
 
     if( expr && context.kind == Block ) return Err{""};
     if( expr && context.kind == Common ) {
@@ -135,6 +93,8 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
         return Some{};
     }
 
+    current_line = tk.line - less_lines;
+
     switch(tk.kind) {
     case PUSH_F: {
         if( *index >= ctx->size() ) CompilerOutputs::Fatal("You can't push `@void`");
@@ -146,34 +106,19 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
         if( token.kind != STRING ) CompilerOutputs::Fatal("You can't push a " + tokenKindToString(token.kind));
         if( tk.line != token.line ) CompilerOutputs::Fatal("The content to be pushed need to be in the same line.");
 
-        push_fstack(token.lexeme, tk.line);
+        file_stack.push({ token.lexeme, tk.line });
 
         (*index)++;
-        result->~pNode();
-        new (result) pNode(carla::Nop());
-        return Some{};
-    } break;
-
-    case LNREPEAT: {
-        if( *index >= ctx->size() ) CompilerOutputs::Fatal("You can't push `@void`");
-
-        auto data = (*ctx)[++(*index)];
-        if( data.kind != Common ) CompilerOutputs::Fatal("You can't push a Block");
-
-        auto token = std::get<Token>(data.content);
-        if( token.kind != INTEGER ) CompilerOutputs::Fatal("You can't push a " + tokenKindToString(token.kind));
-        if( tk.line != token.line ) CompilerOutputs::Fatal("The content to be pushed need to be in the same line.");
-
-        (*index)++;
-
-        sum_fline_by_stack(tk, std::stol(token.lexeme));
         result->~pNode();
         new (result) pNode(carla::Nop());
         return Some{};
     } break;
 
     case POP_F: {
-        pop_fstack(tk.line);
+        auto [_, line] = file_stack.top();
+        less_lines += tk.line - line + 1;
+        file_stack.pop();
+
         (*index)++;
         result->~pNode();
         new (result) pNode(carla::Nop());
@@ -187,11 +132,11 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
         return Some{};
     };
 
+    case _CONSTEXPR:
+    if( unknown_expression(CARLA_PATTERN_EXPORT) ) return Some{};
+    else return Err{unknownPattern(ctx, index)};
     case START:
     if( macros(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
-    else return Err{unknownPattern(ctx, index)};
-    case IF_TARGET:
-    if( morgana_comptime(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
     else return Err{unknownPattern(ctx, index)};
     case PUTS:
     if( statement(CARLA_PATTERN_EXPORT, "puts") ) return Some{};
@@ -230,8 +175,7 @@ std::string unknownPattern(const std::vector<pContext>* ctx, size_t *index) {
     if( context.kind == Common ) {
         Token tk = std::get<Token>(context.content);
         buff << ((tk.lexeme.length() == 0) ? tokenKindToString(tk.kind) : tk.lexeme);
-        auto [ file, _line, x ] = get_fline_by_stack(tk);
-        line << file << ":" << _line + x;
+        line << "file:line // TODO! Implement a parser to read the line of the file based in the precompiler output";
     } else {
         buff << Colorizer::BOLD_YELLOW << "Carla[Internal<Block>]" << Colorizer::RESET;
         line << Colorizer::BOLD_YELLOW << "Carla[Internal<Line(?:Numeric!)>]" << Colorizer::RESET;

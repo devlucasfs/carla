@@ -8,17 +8,14 @@ namespace carla {
     struct Lambda {
         std::vector<std::tuple<carla::Type, std::string>> args;
         std::vector<pContext> body;
-        void* fstack_copy;
 
         Lambda(std::vector<std::tuple<carla::Type, std::string>> args, std::vector<pContext> body)
             : args(std::move(args)),
-              body(std::move(body)),
-              fstack_copy(NULL) {}
+              body(std::move(body)) {}
 
         Lambda(std::vector<std::tuple<carla::Type, std::string>> args, std::vector<pContext> body, void *fstack)
             : args(std::move(args)),
-              body(std::move(body)),
-              fstack_copy(fstack) {}
+              body(std::move(body)) {}
 
         ~Lambda() = default;
     };

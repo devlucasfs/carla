@@ -1,4 +1,5 @@
 ..@import("./other.crl");
 
 @_start
-void main = () {};
+void main = () {
+};

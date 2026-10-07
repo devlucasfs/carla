@@ -37,14 +37,12 @@ Scanner::read(std::vector<char> source, std::streamsize size)
         {"constexpr", _CONSTEXPR}, {"namespace", _NAMESPACE},
         {"if", IF}, {"else", ELSE},
         {"while", WHILE},
-        {"layout", LAYOUT}, {"let", LET}, {"mut", MUT},
+        {"syscall!", SYSCALL}, {"let", LET}, {"mut", MUT},
         {"return", RETURN}, {"puts", PUTS},
 
         {"@_start", START}, {"@cast", CAST},
-        {"@iftarget", IF_TARGET},
 
         {"@popfile", POP_F}, { "@pushfile", PUSH_F },
-        {"@lnrepeat", LNREPEAT}
     };
 
     std::vector<Token> tokens;
@@ -102,7 +100,7 @@ Scanner::read(std::vector<char> source, std::streamsize size)
             break;
 
             case '.':
-            if( str[++i] == '.' ) addSimple(&tokens, ITERABLE);
+            if( str[++i] == '.' ) addSimple(&tokens, ITER_CONCAT);
             else { i--; addSimple(&tokens, DOT); }
             break;
 

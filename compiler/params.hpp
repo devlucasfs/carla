@@ -2,19 +2,23 @@
 #pragma once
 
 #include "common.hpp"
+#include "compiler_outputs.hpp"
 #include "libs/eva.hpp"
 #include <cstring>
 #include <filesystem>
+#include <regex>
 #include <stdexcept>
 #include <string>
 
-typedef struct CompilerParams {
+struct CompilerParams {
 public:
     std::string cwd;
     std::string command;
     std::string main;
     std::string target;
     std::string precompiler;
+    std::string arch;
+    std::string os;
     bool verbose;
 
     bool ffi = false;
@@ -92,4 +96,4 @@ public:
         absolute_main_file = std::filesystem::absolute(main).string();
         return CompilerParams(cwd, command, main, precomp, target, verbose);
     }
-} CompilerParams;
+};

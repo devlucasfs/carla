@@ -141,7 +141,7 @@ bool Commands::build(CompilerParams& params) {
     if(! std::filesystem::exists(targetDir) ) std::filesystem::create_directory(targetDir);
 
     if(! params.precompiler.empty() ) {
-        auto eva = targetDir.parent_path() / "target.eva";
+        auto eva = targetDir.parent_path() / "src/main.crl";
         auto pco = targetDir / "output.crl.e";
 
         std::string precompiler = params.precompiler + " \"" + eva.string() + "\" \"" + pco.string() + "\"";
@@ -152,13 +152,13 @@ bool Commands::build(CompilerParams& params) {
 
     /* checks if the file is accessible */
     std::ifstream file(params.main, std::ios::binary | std::ios::ate);
-    if(! file.is_open() ) CompilerOutputs::Fatal("Your main file is not valid. Try use -m to define the newest file");
+    if(! file.is_open() ) CompilerOutputs::Fatal("Your main file is not valid. Try use -main to define the newest file");
 
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
 
     std::vector<char> src(size);
-    if(! file.read(src.data(), size) ) CompilerOutputs::Fatal("Your main file is not valid. Try use -m to define the newest file");
+    if(! file.read(src.data(), size) ) CompilerOutputs::Fatal("Your main file is not valid. Try use -main to define the newest file");
 
     Symt symbols;
     /* Lexical & Precompiler phase */

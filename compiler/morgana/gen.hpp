@@ -40,26 +40,6 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
         pNode node = nodes[index];
 
         switch(node.index()) {
-            case MORG_QUOTE: {
-                auto quote = std::get<carla::morgana::Quote>(node);
-                auto data =
-                    (quote.kind == IF_TARGET)
-                    ? "iftarget"
-                    : "";
-
-                builder << morgana::quote( quote.quote, data );
-
-                if( nodes.size() <= (index + 1) || nodes[index + 1].index() != THEN )
-                    CompilerOutputs::Fatal("@" + std::string(data) + " should be used before a THEN (`:`) operator.");
-
-                if( nodes.size() <= (index + 2) )
-                    CompilerOutputs::Fatal("after a THEN (`:`) operator, you should to use some expression.");
-
-                std::vector<pNode> after { nodes[index + 2] };
-                std::string final = generateMorganaCode(after, symbols, internal);
-                builder << final + "\n}\n";
-            } break;
-
             case COMPTIME_START: builder << morgana::comptime("_start"); break;
             case NS: {
                 std::vector<pNode> statement;
@@ -82,11 +62,7 @@ std::string generateMorganaCode(std::vector<pNode> nodes, Symt& symbols, bool in
                     auto lambda = std::get<carla::Lambda>(nodes[index + 1]);
                     std::vector<pNode> statement;
 
-                    special_fstack = lambda.fstack_copy;
                     Parser::checkSyntax(symbols, &statement, lambda.body, false);
-
-                    if( lambda.fstack_copy != NULL )
-                    /* -> */ std::free(lambda.fstack_copy);
 
                     std::vector<morgana::type> types;
                     std::vector<std::string> identifiers;

@@ -44,7 +44,6 @@ bool lambda(CARLA_PATTERN_ARGUMENTS) {
     if( semi.kind != Common ) CARLA_RETURN_DEFAULT;
     if( std::get<Token>(semi.content).kind != SEMICOLON ) CARLA_RETURN_DEFAULT;
 
-    file_stack* fstack_cp = new file_stack(fstack);
-    *result = carla::Lambda(t, vBody, static_cast<void*>(fstack_cp));
+    *result = carla::Lambda(t, vBody);
     return true;
 }
