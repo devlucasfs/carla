@@ -3,7 +3,8 @@
 #include <string>
 
 #define STATEMENTS_FIELDS \
-    X(STMT_PUTS, puts)
+    X(STMT_PUTS, "puts") \
+    X(STMT_SYSCALL, "syscall!")
 
 namespace carla {
     #define X(id, _) id,
@@ -14,7 +15,7 @@ namespace carla {
         int data;
         Stmt(std::string data) {
             if( false ) {} // "Wild if"
-            #define X(val, id) else if( data == #id ) this->data = val;
+            #define X(val, id) else if( data == id ) this->data = val;
             STATEMENTS_FIELDS
             #undef X
             else { this->data = STMT_UNKNOWN; }

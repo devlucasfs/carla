@@ -54,7 +54,7 @@ extern std::string absolute_main_file;
 
 #include "parser/patterns/namespace.hpp"
 #include "./patterns/declaration.hpp"
-#include "./patterns/expressions.hpp"
+// #include "./patterns/expressions.hpp"
 #include "./patterns/statement.hpp"
 #include "./patterns/lambda.hpp"
 #include "./patterns/macros.hpp"
@@ -132,14 +132,15 @@ Result pattern(CARLA_PATTERN_ARGUMENTS, bool expr) {
         return Some{};
     };
 
-    case _CONSTEXPR:
-    if( unknown_expression(CARLA_PATTERN_EXPORT) ) return Some{};
-    else return Err{unknownPattern(ctx, index)};
+    // case _CONSTEXPR:
+    // if( unknown_expression(CARLA_PATTERN_EXPORT) ) return Some{};
+    // else return Err{unknownPattern(ctx, index)};
     case START:
     if( macros(CARLA_PATTERN_EXPORT, tk.kind) ) return Some{};
     else return Err{unknownPattern(ctx, index)};
     case PUTS:
-    if( statement(CARLA_PATTERN_EXPORT, "puts") ) return Some{};
+    case SYSCALL:
+    if( statement(CARLA_PATTERN_EXPORT, kindKeywordToString(tk.kind)) ) return Some{};
     else return Err{unknownPattern(ctx, index)};
     case _NAMESPACE:
     if( _namespace(CARLA_PATTERN_EXPORT) ) return Some{};

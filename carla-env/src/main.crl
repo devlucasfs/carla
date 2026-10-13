@@ -1,5 +1,2 @@
-..@import("./other.crl");
-
-@_start
-void main = () {
-};
+int32 main = fn(int8 abc, xyz ()) {
+}
