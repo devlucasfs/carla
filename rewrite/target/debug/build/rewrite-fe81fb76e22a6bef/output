@@ -1,2 +1,0 @@
-cargo:rustc-link-search=native=lib
-cargo:rustc-link-lib=dylib=eva

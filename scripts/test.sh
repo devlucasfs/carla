@@ -1,4 +1,4 @@
+cargo build
 cd carla-env
-# ../build/carla help
-../build/carla build
+../target/debug/rewrite build
 cd ..

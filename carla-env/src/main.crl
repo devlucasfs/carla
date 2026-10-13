@@ -1,2 +1,10 @@
-int32 main = fn(int8 abc, xyz ()) {
-}
+-- Define some types as alias 'cuz we need to
+-- reduce boilerplate code
+using raw_memory = byte*;
+using arena_t = |generic_ptr, uint, uint, uint, generic_ptr, generic_ptr, generic_ptr|; -- C Struct rep
+
+-- Arena externs
+extern arena_t arena_start = fn(uint size);
+extern raw_memory arena_alloc = fn(arena_t* ref, uint size);
+extern void arena_dump = fn(arena_t* ref, raw_memory mem);
+extern void arena_destroy = fn(arena_t* ref);
