@@ -1,39 +1,107 @@
 use crate::{
     compiler::{
         iterator::ContextIterator,
-        nesting::Context,
+        nesting::{self, Context},
         node::Node,
         scanner::{
             BitOp::OR,
             MathOp::Star,
             PBB::Bracket,
-            Token,
+            Scanner, Token,
             TokenKind::{self, BitOperator, Comma, Identifier, MathOperator, Wild},
         },
         symbols::{
             Symbol::{self, BType, TypeAlias},
             Symbols,
         },
+        visitor,
     },
     morgana::MorganaType::{self, Tuple},
+    utils::compiler_outputs::CompilerOutputs,
 };
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Base {
+    pub id: String,
+    pub symbol: Symbol,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CarlaType {
-    tuple: Vec<CarlaType>,
-    levels: usize,
-    base: Option<Symbol>,
-    dim: Vec<u128>,
+    pub tuple: Vec<CarlaType>,
+    pub levels: usize,
+    pub base: Option<Base>,
+    pub dim: Vec<i128>,
 }
 
 impl CarlaType {
+    pub fn from<T: ToString>(data: T, syms: &mut Symbols) -> Self {
+        let mut scan = Scanner::new(data.to_string());
+        scan.read();
+        let contexts = nesting::work(scan.tokens);
+        let nodes = visitor::work(&contexts, syms);
+
+        let err = format!(
+            "{} isn't a valid carla type. You can't make a `from`",
+            data.to_string()
+        );
+
+        if nodes.len() != 1 {
+            CompilerOutputs::fatal_internal(&err);
+        }
+
+        let Node::InternalType(data) = nodes.get(0).unwrap() else {
+            CompilerOutputs::fatal_internal(err);
+            unreachable!();
+        };
+
+        data.clone()
+    }
+
+    /// Id do tipo base exatamente como foi escrito (None para tuplas e `| |`).
+    pub fn base_id(&self) -> Option<&str> {
+        self.base.as_ref().map(|b| b.id.as_str())
+    }
+
+    pub fn to_string(&self) -> String {
+        let mut result = String::new();
+
+        if !self.tuple.is_empty() {
+            result.push('|');
+
+            for (i, ty) in self.tuple.iter().enumerate() {
+                if i > 0 {
+                    result.push_str(", ");
+                }
+
+                result.push_str(&ty.to_string());
+            }
+
+            result.push('|');
+        } else if let Some(base) = &self.base {
+            result.push_str(&base.id);
+        } else {
+            result.push_str("| |");
+        }
+
+        for dim in &self.dim {
+            result.push_str(&format!("[{dim}]"));
+        }
+
+        for _ in 0..self.levels {
+            result.push('*');
+        }
+
+        result
+    }
+
     pub fn to_morgana(&self) -> MorganaType {
         if self.levels > 0 {
             return MorganaType::Ptr;
         }
 
-        if let Some(sym) = &self.base {
-            match sym {
+        if let Some(base) = &self.base {
+            match &base.symbol {
                 BType(btype) => return btype.clone(),
                 TypeAlias(alias) => return alias.to_morgana(),
                 _ => unreachable!(),
@@ -140,6 +208,10 @@ fn parse_base(
         return Err(format!("Unknown type: {id}"));
     };
 
+    if !matches!(symbol, BType(_) | TypeAlias(_)) {
+        return Err(format!("Unknown type: {id}"));
+    }
+
     let mut dimensions = Vec::new();
     loop {
         let Some(op) = iterator.peek() else { break };
@@ -159,7 +231,7 @@ fn parse_base(
 
         match size.kind {
             TokenKind::Octal(i) | TokenKind::Hexa(i) => dimensions.push(i),
-            TokenKind::Integer(i) => dimensions.push(i as u128),
+            TokenKind::Integer(i) => dimensions.push(i),
             _ => return Err("Array dimension must contain an Integer".into()),
         }
         iterator.next();
@@ -177,7 +249,10 @@ fn parse_base(
     Ok(Node::InternalType(CarlaType {
         tuple: Vec::new(),
         levels,
-        base: Some(symbol.clone()),
+        base: Some(Base {
+            id: id.clone(),
+            symbol: symbol.clone(),
+        }),
         dim: dimensions,
     }))
 }

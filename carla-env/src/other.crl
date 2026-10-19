@@ -1,3 +1,0 @@
-void write = fn(int32 size, uint8* data) {
-    syscall! 1, 1, data, size;
-};

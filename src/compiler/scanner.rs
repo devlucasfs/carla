@@ -82,10 +82,10 @@ pub enum TokenKind {
     Keyword(Keywords),
     String(String),
     Integer(i128),
-    Octal(u128),
+    Octal(i128),
     Float(f64),
     Close(PBB),
-    Hexa(u128),
+    Hexa(i128),
     Bool(bool),
     Open(PBB),
     Walrus,
@@ -163,7 +163,9 @@ impl Scanner {
 
             let size = self.tokens.len();
 
-            if ch.is_ascii_digit() && !(second == b'x' || second == b'o') {
+            if (ch.is_ascii_digit() && !(second == b'x' || second == b'o'))
+                || ch == b'-' && second.is_ascii_digit()
+            {
                 i += 1;
                 let mut number = String::from(char::from(ch));
                 while self.bytes[i].is_ascii_digit()
@@ -292,7 +294,7 @@ impl Scanner {
                     }
 
                     i -= 1;
-                    self.push(Hexa(u128::from_str_radix(&number, 16).unwrap()));
+                    self.push(Hexa(i128::from_str_radix(&number, 16).unwrap()));
                 }
 
                 b'0' if second == b'o' => {
@@ -303,7 +305,7 @@ impl Scanner {
                         i += 1;
                     }
                     i -= 1;
-                    self.push(Octal(u128::from_str_radix(&number, 8).unwrap()));
+                    self.push(Octal(i128::from_str_radix(&number, 8).unwrap()));
                 }
 
                 b'"' => {
@@ -331,7 +333,7 @@ impl Scanner {
                 b'=' => self.push(Sign),
                 b'!' => self.push(Bang),
                 b'.' => self.push(Dot),
-                b'_' => self.push(Wild),
+                b'_' if !second.is_ascii_alphabetic() => self.push(Wild),
 
                 b'<' => self.push(BinaryOperator(Less)),
                 b'>' => self.push(BinaryOperator(Greater)),
@@ -358,19 +360,20 @@ impl Scanner {
                 _ => {}
             };
 
-            if ch.is_ascii_alphabetic() || ch == b'@' {
+            if ch.is_ascii_alphabetic() || ch == b'@' || ch == b'_' {
                 i += 1;
                 let mut identifier = String::from(char::from(ch));
-                while self.bytes[i].is_ascii_alphanumeric()
-                    || self.bytes[i] == b'_'
-                    || self.bytes[i] == b'!'
+
+                while i < self.bytes.len()
+                    && (self.bytes[i].is_ascii_alphanumeric() || self.bytes[i] == b'_')
                 {
                     identifier.push(char::from(self.bytes[i]));
                     i += 1;
+                }
 
-                    if self.bytes[i] == b'!' {
-                        break;
-                    }
+                if i < self.bytes.len() && self.bytes[i] == b'!' {
+                    identifier.push('!');
+                    i += 1;
                 }
 
                 if let Some(keyword) = is_keyword(&identifier) {

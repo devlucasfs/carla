@@ -38,7 +38,9 @@ impl Command {
 
         let contexts = nesting::work(scanner.tokens);
         let nodes = visitor::work(&contexts, &mut symbols);
-        let code = Codegen::new(nodes.clone()).generate();
-        println!("{nodes:#?}\n\n{code}");
+        // println!("{nodes:#?}");
+
+        let code = Codegen::new(nodes.clone()).generate(&mut symbols);
+        println!("{code}");
     }
 }

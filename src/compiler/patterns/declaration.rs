@@ -4,8 +4,9 @@ use crate::compiler::{
     node::Node::{self, InternalType},
     patterns::types::{self, CarlaType},
     scanner::{
+        Keywords::Fn,
         Token,
-        TokenKind::{Identifier, Semi, Sign},
+        TokenKind::{Identifier, Keyword, Semi, Sign},
     },
     symbols::{Symbol, Symbols},
 };
@@ -37,17 +38,20 @@ pub fn work(
 
     match iterator.next() {
         Some(Common(tk)) if [Sign, Semi].contains(&tk.kind) => {
+            let is_fn = tk.kind == Sign
+                && matches!(iterator.peek(), Some(Common(next)) if next.kind == Keyword(Fn));
+
             syms.push(
                 name,
-                Symbol::Variable(Box::from(ty.clone()), tk.kind == Sign),
+                Symbol::Variable(Box::from(ty.clone()), tk.kind == Sign, is_fn),
             );
 
-            return Ok(Node::Declaration(Variable {
+            Ok(Node::Declaration(Variable {
                 identifier: name.clone(),
                 _type: Box::from(ty.clone()),
                 hopeless: false,
-            }));
+            }))
         }
         _ => todo!(),
-    };
+    }
 }

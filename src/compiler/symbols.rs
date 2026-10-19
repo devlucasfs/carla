@@ -1,5 +1,6 @@
 use crate::{
-    compiler::patterns::types::CarlaType, morgana::MorganaType,
+    compiler::patterns::{lambda::Arg, types::CarlaType},
+    morgana::MorganaType,
     utils::compiler_outputs::CompilerOutputs,
 };
 
@@ -9,7 +10,9 @@ type Stack<T> = Vec<T>;
 pub enum Symbol {
     BType(MorganaType),
     TypeAlias(Box<CarlaType>),
-    Variable(Box<CarlaType>, bool),
+    Variable(Box<CarlaType>, bool, bool),
+    ExternFunction(Box<CarlaType>, Vec<Arg>),
+    // Codegen symbols
 }
 
 #[derive(Debug, Clone, PartialEq)]

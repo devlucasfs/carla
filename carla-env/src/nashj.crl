@@ -1,0 +1,10 @@
+using nashj = |generic_ptr, uint, uint, uint, generic_ptr, generic_ptr, generic_ptr|;
+using qitah = generic_ptr;
+
+extern nashj nashj_start = fn(uint size);
+extern qitah nashj_alloc = fn(nashj* athar, uint size);
+extern byte* nashj_getraw = fn(qitah mem);
+extern void nashj_dump = fn(nashj* athar, qitah mem);
+extern int nashj_coalesce = fn(nashj* athar);
+extern void nashj_reset = fn(nashj* athar);
+extern void nashj_destroy = fn(nashj* athar);

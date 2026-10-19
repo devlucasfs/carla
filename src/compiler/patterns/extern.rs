@@ -9,7 +9,7 @@ use crate::compiler::{
         types::CarlaType,
     },
     scanner::Token,
-    symbols::Symbols,
+    symbols::{Symbol::ExternFunction, Symbols},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +39,8 @@ pub fn work(
         ));
     };
 
+    syms.erase(&decl.identifier);
+
     if decl.hopeless {
         return Ok(Declare(Variable(
             decl._type.clone(),
@@ -59,6 +61,11 @@ pub fn work(
             err
         ));
     };
+
+    syms.push(
+        decl.identifier.clone(),
+        ExternFunction(decl._type.clone(), func.args.clone()),
+    );
 
     if func.run != LambdaRunner::Foward {
         return Err("An extern function can't hold a code context".into());

@@ -44,9 +44,10 @@ pub fn function(
     ret: MorganaType,
     identifier: String,
     args: Vec<(String, MorganaType)>,
+    body: String,
 ) {
     ctx.append(format!(
-        "{} {identifier}({}) {{\n{}}}",
+        "{} {identifier}({}) {{\n{}{body}}}",
         ret.to_string(),
         args.iter()
             .map(|x| x.1.to_string())
@@ -67,4 +68,19 @@ pub fn function(
             .concat()
         }
     ));
+}
+
+pub fn get_function_ret(
+    ctx: &mut Codegen,
+    identifier: &String,
+    function: &String,
+    arguments: &String,
+) {
+    ctx.append(format!("{identifier} = call {function}({arguments})\n"));
+}
+
+pub fn write(ctx: &mut Codegen, content: &String) {
+    if !content.is_empty() {
+        ctx.append(format!("{content}\n"));
+    }
 }

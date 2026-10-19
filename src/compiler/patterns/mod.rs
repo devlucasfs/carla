@@ -15,6 +15,7 @@ use crate::{
 };
 
 pub mod declaration;
+pub mod expressions;
 pub mod r#extern;
 pub mod lambda;
 pub mod types;
@@ -53,6 +54,15 @@ pub fn handler(
             errors,
             "Type parser",
             types::work(token, syms, iterator)
+        );
+    }
+
+    if expressions::starts_with(&token.kind) {
+        try_pattern!(
+            iterator,
+            errors,
+            "Expressions parser",
+            expressions::work(token, syms, iterator)
         );
     }
 

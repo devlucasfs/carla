@@ -1,10 +1,15 @@
--- Define some types as alias 'cuz we need to
--- reduce boilerplate code
-using raw_memory = byte*;
-using arena_t = |generic_ptr, uint, uint, uint, generic_ptr, generic_ptr, generic_ptr|; -- C Struct rep
+using nashj = |generic_ptr, uint, uint, uint, generic_ptr, generic_ptr, generic_ptr|;
+using qitah = generic_ptr;
 
--- Arena externs
-extern arena_t arena_start = fn(uint size);
-extern raw_memory arena_alloc = fn(arena_t* ref, uint size);
-extern void arena_dump = fn(arena_t* ref, raw_memory mem);
-extern void arena_destroy = fn(arena_t* ref);
+extern nashj nashj_start = fn(uint size);
+extern qitah nashj_alloc = fn(nashj* athar, int size);
+extern byte* nashj_getraw = fn(qitah mem);
+extern void nashj_dump = fn(nashj* athar, qitah mem);
+extern int nashj_coalesce = fn(nashj* athar);
+extern void nashj_reset = fn(nashj* athar);
+extern void nashj_destroy = fn(nashj* athar);
+
+void _start = fn() {
+    nashj pool = nashj_start(-512);
+    qitah mem = nashj_alloc(&pool, 128);
+}

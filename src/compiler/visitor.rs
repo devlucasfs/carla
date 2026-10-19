@@ -20,6 +20,7 @@ pub fn work(ctx: &Vec<Context>, syms: &mut Symbols) -> Vec<Node> {
     let mut iterators = vec![ContextIterator::new(ctx.as_slice(), 0)];
     syms.push_scope();
 
+    let mut scopes = 0;
     while iterators.len() > 0 && last!(iterators).remaining() > 0 {
         let iterator = last!(iterators);
         let Some(node) = iterator.next() else {
@@ -30,7 +31,8 @@ pub fn work(ctx: &Vec<Context>, syms: &mut Symbols) -> Vec<Node> {
         match node {
             Block(_, ctx) => {
                 syms.push_scope();
-                iterators.push(ContextIterator::new(ctx.as_slice(), 0))
+                iterators.push(ContextIterator::new(ctx.as_slice(), 0));
+                scopes += 1;
             }
 
             Common(token) => {
@@ -41,7 +43,10 @@ pub fn work(ctx: &Vec<Context>, syms: &mut Symbols) -> Vec<Node> {
 
         if last!(iterators).remaining() == 0 {
             iterators.pop();
-            syms.pop_scope();
+            if scopes > 0 {
+                scopes -= 1;
+                syms.pop_scope();
+            }
         }
     }
 
