@@ -41,11 +41,12 @@ pub fn work(
 
     syms.erase(&decl.identifier);
 
+    let Some(decl_t) = &decl._type else {
+        return Err("An extern declaration need a explicit type".into());
+    };
+
     if decl.hopeless {
-        return Ok(Declare(Variable(
-            decl._type.clone(),
-            decl.identifier.clone(),
-        )));
+        return Ok(Declare(Variable(decl_t.clone(), decl.identifier.clone())));
     }
 
     let Some(Common(token)) = iterator.next() else {
@@ -64,7 +65,7 @@ pub fn work(
 
     syms.push(
         decl.identifier.clone(),
-        ExternFunction(decl._type.clone(), func.args.clone()),
+        ExternFunction(decl_t.clone(), func.args.clone()),
     );
 
     if func.run != LambdaRunner::Foward {
@@ -72,7 +73,7 @@ pub fn work(
     }
 
     Ok(Declare(Func(
-        decl._type.clone(),
+        decl_t.clone(),
         func.args.clone(),
         decl.identifier.clone(),
     )))

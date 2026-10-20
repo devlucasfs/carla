@@ -1,45 +1,354 @@
-use crate::compiler::{
-    iterator::ContextIterator,
-    nesting::Context::{Block, Common},
-    node::Node::{self, Expression},
-    scanner::{
-        BitOp::AND,
-        MathOp::Minus,
-        PBB::Paren,
-        Token,
-        TokenKind::{
-            self, Bang, Comma, Dot, Float, Hexa, Identifier, Integer, MathOperator, Octal, Semi,
-            String as Str,
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use crate::{
+    compiler::{
+        iterator::ContextIterator,
+        nesting::Context::{Block, Common},
+        node::Node::{self, Expression},
+        patterns::types::CarlaType,
+        scanner::{
+            BitOp::AND,
+            MathOp::{self, Minus},
+            PBB::Paren,
+            Token,
+            TokenKind::{
+                self, Bang, Bool, Comma, Float, Hexa, Identifier, Integer, MathOperator, Nil,
+                Octal, Semi, String as Str,
+            },
+        },
+        symbols::{
+            Symbol::{self, ExternFunction, Variable},
+            Symbols,
         },
     },
-    symbols::{
-        Symbol::{ExternFunction, Variable},
-        Symbols,
-    },
+    morgana::MorganaType,
 };
 
-macro_rules! unpack {
-    ($data:expr) => {{
-        match $data {
-            Ok(a) => a,
-            Err(e) => return Err(e),
-        }
-    }};
+const DEFAULT_INT: &str = "int";
+const DEFAULT_BOOL: &str = "bool";
+const DEFAULT_STR_BASE: &str = "byte";
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum UnOp {
+    Neg,
+    Not,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    BitAnd,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Float(f64),
-    Integer(i128),
-    String(String),
-    Pointer(String),
-    Call(String, Vec<Node>),
+    Integer(i128, CarlaType),
+    String(String, CarlaType),
+    Boolean(bool, CarlaType),
+    Nil,
+    Var(String, CarlaType),
+    Pointer(String, CarlaType),
+    Call(String, Vec<Expr>, CarlaType),
+    Unary(UnOp, Box<Expr>, CarlaType),
+    Binary(BinOp, Box<Expr>, Box<Expr>, CarlaType),
+}
+
+impl Expr {
+    pub fn ty(&self) -> CarlaType {
+        match self {
+            Expr::Nil => CarlaType::untyped_ptr(),
+            Expr::Integer(_, t)
+            | Expr::String(_, t)
+            | Expr::Boolean(_, t)
+            | Expr::Var(_, t)
+            | Expr::Pointer(_, t)
+            | Expr::Call(_, _, t)
+            | Expr::Unary(_, _, t)
+            | Expr::Binary(_, _, _, t) => t.clone(),
+        }
+    }
+
+    pub fn is_const(&self) -> bool {
+        matches!(
+            self,
+            Expr::Integer(..) | Expr::String(..) | Expr::Boolean(..) | Expr::Nil
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Compiled {
+    Const(Expr),
+    Lazy(ExprIterator),
+}
+
+impl Compiled {
+    pub fn expr(&self) -> &Expr {
+        match self {
+            Compiled::Const(e) => e,
+            Compiled::Lazy(it) => it.source(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExprId(pub [u64; 4]);
+
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+impl ExprId {
+    fn fresh() -> Self {
+        ExprId([NEXT_ID.fetch_add(1, Ordering::Relaxed), 0, 0, 0])
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Operand {
+    Const(Expr),
+    Var(String),
+    Temp(ExprId),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StepOp {
+    AddrOf(String),
+    Unary(UnOp, Operand),
+    Binary(BinOp, Operand, Operand),
+    Call(String, Vec<Operand>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Step {
+    pub id: ExprId,
+    pub ty: CarlaType,
+    pub op: StepOp,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExprIterator {
+    source: Expr,
+    steps: Vec<Step>,
+    pos: usize,
+    result: Operand,
+}
+
+impl ExprIterator {
+    pub fn new(expr: Expr) -> Self {
+        let mut steps = vec![];
+        let result = lower(&expr, &mut steps);
+        Self {
+            source: expr,
+            steps,
+            pos: 0,
+            result,
+        }
+    }
+
+    pub fn source(&self) -> &Expr {
+        &self.source
+    }
+
+    pub fn result(&self) -> &Operand {
+        &self.result
+    }
+}
+
+impl Iterator for ExprIterator {
+    type Item = Step;
+
+    fn next(&mut self) -> Option<Step> {
+        let step = self.steps.get(self.pos)?.clone();
+        self.pos += 1;
+        Some(step)
+    }
+}
+
+fn emit(out: &mut Vec<Step>, ty: &CarlaType, op: StepOp) -> Operand {
+    let id = ExprId::fresh();
+    out.push(Step {
+        id,
+        ty: ty.clone(),
+        op,
+    });
+    Operand::Temp(id)
+}
+
+fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
+    match e {
+        Expr::Var(n, _) => Operand::Var(n.clone()),
+        Expr::Pointer(n, t) => emit(out, t, StepOp::AddrOf(n.clone())),
+        Expr::Unary(op, x, t) => {
+            let a = lower(x, out);
+            emit(out, t, StepOp::Unary(*op, a))
+        }
+        Expr::Binary(op, l, r, t) => {
+            let a = lower(l, out);
+            let b = lower(r, out);
+            emit(out, t, StepOp::Binary(*op, a, b))
+        }
+        Expr::Call(n, args, t) => {
+            let a = args.iter().map(|x| lower(x, out)).collect();
+            emit(out, t, StepOp::Call(n.clone(), a))
+        }
+        lit => Operand::Const(lit.clone()),
+    }
+}
+
+fn morgana_of(ty: &CarlaType) -> Option<MorganaType> {
+    if !ty.dim.is_empty() {
+        return None;
+    }
+    if ty.levels == 0 && ty.tuple.is_empty() && ty.base.is_none() {
+        return None;
+    }
+    Some(ty.to_morgana())
+}
+
+fn is_int(m: &MorganaType) -> bool {
+    matches!(m, MorganaType::Integer(_) | MorganaType::UInteger(_))
+}
+
+fn fits(v: i128, m: &MorganaType) -> bool {
+    match m {
+        MorganaType::Integer(b) if *b > 0 && *b < 128 => {
+            let lim = 1i128 << (*b - 1);
+            (-lim..lim).contains(&v)
+        }
+        MorganaType::UInteger(b) if *b > 0 && *b < 127 => v >= 0 && v < (1i128 << *b),
+        MorganaType::UInteger(_) => v >= 0,
+        _ => true,
+    }
+}
+
+fn check_fits(v: i128, ty: &CarlaType) -> Result<(), String> {
+    match morgana_of(ty) {
+        Some(m) if !fits(v, &m) => Err(format!(
+            "o valor {v} não cabe em `{}` (overflow em tempo de compilação)",
+            ty.to_string()
+        )),
+        _ => Ok(()),
+    }
+}
+
+fn unsupported(op: impl std::fmt::Debug, tys: &[&CarlaType]) -> String {
+    let names: Vec<String> = tys.iter().map(|t| format!("`{}`", t.to_string())).collect();
+    format!(
+        "operador {op:?} não se aplica a {} (overload de operador ainda não suportado)",
+        names.join(" e ")
+    )
+}
+
+fn type_unary(op: UnOp, t: &CarlaType) -> Result<CarlaType, String> {
+    match (op, morgana_of(t)) {
+        (UnOp::Neg, Some(MorganaType::Integer(_))) => Ok(t.clone()),
+        (UnOp::Neg, Some(MorganaType::UInteger(_))) => {
+            Err(format!("negação de `{}`: tipo sem sinal", t.to_string()))
+        }
+        (UnOp::Not, Some(m)) if is_int(&m) => Ok(t.clone()),
+        _ => Err(unsupported(op, &[t])),
+    }
+}
+
+fn type_binary(op: BinOp, l: &CarlaType, r: &CarlaType) -> Result<CarlaType, String> {
+    let (Some(ml), Some(mr)) = (morgana_of(l), morgana_of(r)) else {
+        return Err(unsupported(op, &[l, r]));
+    };
+
+    if !is_int(&ml) || !is_int(&mr) {
+        return Err(unsupported(op, &[l, r]));
+    }
+
+    if ml != mr {
+        return Err(format!(
+            "tipos diferentes em {op:?}: `{}` e `{}` (sem conversão implícita)",
+            l.to_string(),
+            r.to_string()
+        ));
+    }
+
+    Ok(l.clone())
+}
+
+fn adapt(lit: Expr, to: &CarlaType) -> Result<Expr, String> {
+    match (&lit, morgana_of(to)) {
+        (Expr::Integer(v, _), Some(m)) if is_int(&m) => {
+            check_fits(*v, to)?;
+            Ok(Expr::Integer(*v, to.clone()))
+        }
+        _ => Ok(lit),
+    }
+}
+
+fn make_unary(op: UnOp, x: Expr) -> Result<Expr, String> {
+    let ty = type_unary(op, &x.ty())?;
+    let folded = match (op, &x) {
+        (UnOp::Neg, Expr::Integer(i, _)) => {
+            let v = i.checked_neg().ok_or("overflow em tempo de compilação")?;
+            check_fits(v, &ty)?;
+            Some(Expr::Integer(v, ty.clone()))
+        }
+        (UnOp::Not, Expr::Boolean(b, _)) => Some(Expr::Boolean(!b, ty.clone())),
+        (UnOp::Not, Expr::Integer(i, _)) => Some(Expr::Integer((*i == 0) as i128, ty.clone())),
+        _ => None,
+    };
+    Ok(folded.unwrap_or_else(|| Expr::Unary(op, Box::new(x), ty)))
+}
+
+fn make_binary(op: BinOp, l: Expr, r: Expr) -> Result<Expr, String> {
+    let (l, r) = match (l.is_const(), r.is_const()) {
+        (true, false) => (adapt(l, &r.ty())?, r),
+        (false, true) => {
+            let t = l.ty();
+            (l, adapt(r, &t)?)
+        }
+        _ => (l, r),
+    };
+
+    let ty = type_binary(op, &l.ty(), &r.ty())?;
+    if let Some(v) = fold_binary(op, &l, &r, &ty)? {
+        return Ok(v);
+    }
+    Ok(Expr::Binary(op, Box::new(l), Box::new(r), ty))
+}
+
+fn fold_binary(op: BinOp, l: &Expr, r: &Expr, ty: &CarlaType) -> Result<Option<Expr>, String> {
+    use BinOp::*;
+
+    if let (Expr::Boolean(a, _), Expr::Boolean(b, _)) = (l, r) {
+        if op == BitAnd {
+            return Ok(Some(Expr::Boolean(a & b, ty.clone())));
+        }
+        return Ok(None);
+    }
+
+    let (Expr::Integer(a, _), Expr::Integer(b, _)) = (l, r) else {
+        return Ok(None);
+    };
+
+    let v = match op {
+        Div | Rem if *b == 0 => return Err("divisão por zero em tempo de compilação".into()),
+        Add => a.checked_add(*b),
+        Sub => a.checked_sub(*b),
+        Mul => a.checked_mul(*b),
+        Div => a.checked_div(*b),
+        Rem => a.checked_rem(*b),
+        BitAnd => Some(a & b),
+    }
+    .ok_or("overflow em tempo de compilação")?;
+
+    check_fits(v, ty)?;
+    Ok(Some(Expr::Integer(v, ty.clone())))
 }
 
 pub fn starts_with(kind: &TokenKind) -> bool {
     matches!(
         kind,
         Identifier(_)
+            | Bool(_)
             | TokenKind::BitOperator(AND)
             | Integer(_)
             | Hexa(_)
@@ -48,8 +357,186 @@ pub fn starts_with(kind: &TokenKind) -> bool {
             | Str(_)
             | MathOperator(Minus)
             | Bang
-            | Dot
+            | Nil
     )
+}
+
+pub fn can_make_ptr(sym: &Symbol) -> bool {
+    matches!(sym, Variable(_, _, _) | ExternFunction(_, _))
+}
+
+fn builtin(syms: &Symbols, id: &str) -> Result<CarlaType, String> {
+    CarlaType::named(id, syms).ok_or_else(|| format!("tipo '{id}' não está registrado em Symbols"))
+}
+
+fn symbol_ty(id: &str, sym: &Symbol) -> Result<CarlaType, String> {
+    match sym {
+        Variable(Some(t), _, _) => Ok((**t).clone()),
+        Variable(None, _, _) => Err(format!("a variável '{id}' ainda não tem tipo definido")),
+        ExternFunction(ret, _) => Ok((**ret).clone()),
+        _ => Err(format!("'{id}' não é um valor")),
+    }
+}
+
+fn pointer_ty(id: &str, sym: &Symbol) -> Result<CarlaType, String> {
+    match sym {
+        Variable(Some(t), _, false) => Ok(t.pointer_to()),
+        Variable(None, _, false) => Err(format!("a variável '{id}' ainda não tem tipo definido")),
+        _ => Ok(CarlaType::untyped_ptr()),
+    }
+}
+
+fn int_literal(v: i128, syms: &Symbols) -> Result<Expr, String> {
+    let ty = builtin(syms, DEFAULT_INT)?;
+    check_fits(v, &ty)?;
+    Ok(Expr::Integer(v, ty))
+}
+
+fn binop_of(k: &TokenKind) -> Option<(BinOp, u8, u8)> {
+    Some(match k {
+        TokenKind::BitOperator(AND) => (BinOp::BitAnd, 3, 4),
+        MathOperator(MathOp::Plus) => (BinOp::Add, 5, 6),
+        MathOperator(MathOp::Minus) => (BinOp::Sub, 5, 6),
+        MathOperator(MathOp::Star) => (BinOp::Mul, 7, 8),
+        MathOperator(MathOp::Slash) => (BinOp::Div, 7, 8),
+        MathOperator(MathOp::Mod) => (BinOp::Rem, 7, 8),
+        _ => return None,
+    })
+}
+
+const PREFIX_BP: u8 = 9;
+
+fn parse_expr(
+    min_bp: u8,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Expr, String> {
+    let lhs = match it.next() {
+        None => return Err("expressão incompleta".into()),
+        Some(Block(pbb, inner)) if *pbb == Paren => {
+            let mut sub = ContextIterator::new(inner.as_slice(), 0);
+            let v = parse_expr(0, syms, &mut sub)?;
+            if sub.remaining() > 0 {
+                return Err("tokens sobrando dentro dos parênteses".into());
+            }
+            v
+        }
+        Some(Common(tk)) => parse_prefix(tk, syms, it)?,
+        Some(_) => return Err("bloco inesperado no início da expressão".into()),
+    };
+    climb(lhs, min_bp, syms, it)
+}
+
+fn climb(
+    mut lhs: Expr,
+    min_bp: u8,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Expr, String> {
+    loop {
+        let Some(Common(tk)) = it.peek() else { break };
+        let Some((op, lbp, rbp)) = binop_of(&tk.kind) else {
+            break;
+        };
+        if lbp < min_bp {
+            break;
+        }
+        it.next();
+        let rhs = parse_expr(rbp, syms, it)?;
+        lhs = make_binary(op, lhs, rhs)?;
+    }
+    Ok(lhs)
+}
+
+fn parse_prefix(
+    token: &Token,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Expr, String> {
+    match &token.kind {
+        MathOperator(Minus) => make_unary(UnOp::Neg, parse_expr(PREFIX_BP, syms, it)?),
+        Bang => make_unary(UnOp::Not, parse_expr(PREFIX_BP, syms, it)?),
+
+        TokenKind::BitOperator(AND) => {
+            let err = "Expected an identifier after a & (pointer operator)";
+            let Some(Common(tk)) = it.next() else {
+                return Err(err.into());
+            };
+            let Identifier(identifier) = &tk.kind else {
+                return Err(err.into());
+            };
+            let Some(sym) = syms.lookup(identifier) else {
+                return Err(format!("{identifier} was not found"));
+            };
+            if !can_make_ptr(sym) {
+                return Err(format!("you can't make a pointer of {identifier}"));
+            }
+            let ty = pointer_ty(identifier, sym)?;
+            Ok(Expr::Pointer(identifier.clone(), ty))
+        }
+
+        Integer(i) | Hexa(i) | Octal(i) => int_literal(*i, syms),
+        Bool(b) => Ok(Expr::Boolean(*b, builtin(syms, DEFAULT_BOOL)?)),
+        Str(s) => Ok(Expr::String(
+            s.clone(),
+            builtin(syms, DEFAULT_STR_BASE)?.pointer_to(),
+        )),
+        Nil => Ok(Expr::Nil),
+        Float(_) => Err("a Morgana ainda não tem tipo float".into()),
+
+        Identifier(id) => {
+            let Some(sym) = syms.lookup(id) else {
+                return Err(format!("simbolo n existente : '{id}'"));
+            };
+
+            let is_call = match sym {
+                Variable(_, _, func) => *func,
+                ExternFunction(_, _) => true,
+                _ => return Err(format!("{id} isn't a valid identifier")),
+            };
+
+            let ty = symbol_ty(id, sym)?;
+
+            if is_call {
+                parse_call(id, ty, syms, it)
+            } else {
+                Ok(Expr::Var(id.clone(), ty))
+            }
+        }
+
+        _ => Err(format!(
+            "token não suportado em expressão: {:?}",
+            token.kind
+        )),
+    }
+}
+
+fn parse_call(
+    id: &str,
+    ret: CarlaType,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Expr, String> {
+    let err = format!("Invalid {id} call");
+    let Some(Block(pbb, ctx)) = it.next() else {
+        return Err(err);
+    };
+    if *pbb != Paren {
+        return Err(err);
+    }
+
+    let mut args = vec![];
+    let mut sub = ContextIterator::new(ctx.as_slice(), 0);
+    while sub.remaining() > 0 {
+        args.push(parse_expr(0, syms, &mut sub)?);
+        match sub.next() {
+            None => break,
+            Some(Common(t)) if matches!(t.kind, Comma) => {}
+            _ => return Err(err),
+        }
+    }
+    // TODO: validar contagem e tipos de `args` contra o Vec<Arg> da função
+    Ok(Expr::Call(id.to_string(), args, ret))
 }
 
 pub fn work(
@@ -57,82 +544,25 @@ pub fn work(
     syms: &mut Symbols,
     iterator: &mut ContextIterator<'_>,
 ) -> Result<Node, String> {
-    let data = match &token.kind {
-        TokenKind::BitOperator(AND) => {
-            let err = "Expected an identifier after a & (pointer operator)".into();
-            let Some(Common(tk)) = iterator.next() else {
-                return Err(err);
-            };
+    let lhs = parse_prefix(token, syms, iterator)?;
+    let expr = climb(lhs, 0, syms, iterator)?;
 
-            let Identifier(identifier) = &tk.kind else {
-                return Err(err);
-            };
-
-            Expr::Pointer(identifier.clone())
-        }
-
-        Integer(i) | Hexa(i) | Octal(i) => Expr::Integer(i.clone()),
-
-        Identifier(id) => {
-            let err = format!("{id} isn't a valid identifier");
-            let Some(data) = syms.lookup(id.clone()) else {
-                return Err(format!("simbolo n existente : '{id}'"));
-            };
-
-            let fn_call = |_err: String,
-                           iterator: &mut ContextIterator<'_>,
-                           syms: &mut Symbols|
-             -> Result<Expr, String> {
-                let err = format!("Invalid {id} call");
-                let Some(Block(pbb, ctx)) = iterator.next() else {
-                    return Err(err);
-                };
-
-                if *pbb != Paren {
-                    return Err(err);
-                }
-
-                let mut params = vec![];
-                let mut internal = ContextIterator::new(ctx.as_slice(), 0);
-                while internal.remaining() > 0 {
-                    let Some(Common(first)) = internal.next() else {
-                        return Err(err);
-                    };
-
-                    if !starts_with(&first.kind) {
-                        return Err(err);
-                    }
-
-                    match work(&first, syms, &mut internal) {
-                        Ok(data) => params.push(data),
-                        Err(e) => return Err(e),
-                    }
-                }
-
-                Ok(Expr::Call(id.clone(), params.clone()))
-            };
-
-            match data {
-                Variable(ty, _, func) if *func => unpack!(fn_call(err, iterator, syms)),
-                ExternFunction(_, _) => unpack!(fn_call(err, iterator, syms)),
-                _ => return Err(err),
-            }
-        }
-
-        _ => todo!(),
+    let compiled = if expr.is_const() {
+        Compiled::Const(expr)
+    } else {
+        Compiled::Lazy(ExprIterator::new(expr))
     };
 
     let Some(next) = iterator.next() else {
-        return Ok(Expression(data, true));
+        return Ok(Expression(compiled, true));
     };
 
-    let err = "Expected ; or , and also maybe EOF, after an expression".into();
+    let err = "Expected ; or , and also maybe EOF, after an expression";
     let Common(finish) = next else {
-        return Err(err);
+        return Err(err.into());
     };
-
     match finish.kind {
-        Comma | Semi => Ok(Expression(data, false)),
-        _ => Err(err),
+        Comma | Semi => Ok(Expression(compiled, false)),
+        _ => Err(err.into()),
     }
 }

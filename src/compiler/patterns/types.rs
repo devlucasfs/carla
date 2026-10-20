@@ -1,5 +1,6 @@
 use crate::{
     compiler::{
+        charsert,
         iterator::ContextIterator,
         nesting::{self, Context},
         node::Node,
@@ -58,7 +59,32 @@ impl CarlaType {
         data.clone()
     }
 
-    /// Id do tipo base exatamente como foi escrito (None para tuplas e `| |`).
+    pub fn from_basic<T: ToString>(data: T) -> Self {
+        let mut syms = Symbols::new();
+        charsert::append(&mut syms);
+
+        let mut scan = Scanner::new(data.to_string());
+        scan.read();
+        let contexts = nesting::work(scan.tokens);
+        let nodes = visitor::work(&contexts, &mut syms);
+
+        let err = format!(
+            "{} isn't a valid carla type. You can't make a `from`",
+            data.to_string()
+        );
+
+        if nodes.len() != 1 {
+            CompilerOutputs::fatal_internal(&err);
+        }
+
+        let Node::InternalType(data) = nodes.get(0).unwrap() else {
+            CompilerOutputs::fatal_internal(err);
+            unreachable!();
+        };
+
+        data.clone()
+    }
+
     pub fn base_id(&self) -> Option<&str> {
         self.base.as_ref().map(|b| b.id.as_str())
     }
@@ -93,6 +119,36 @@ impl CarlaType {
         }
 
         result
+    }
+
+    pub fn named(id: &str, syms: &Symbols) -> Option<Self> {
+        let symbol = syms.lookup(id)?;
+        if !matches!(symbol, BType(_) | TypeAlias(_)) {
+            return None;
+        }
+
+        Some(Self {
+            tuple: vec![],
+            levels: 0,
+            base: Some(Base {
+                id: id.to_string(),
+                symbol: symbol.clone(),
+            }),
+            dim: vec![],
+        })
+    }
+
+    pub fn untyped_ptr() -> Self {
+        Self {
+            levels: 1,
+            ..Default::default()
+        }
+    }
+
+    pub fn pointer_to(&self) -> Self {
+        let mut t = self.clone();
+        t.levels += 1;
+        t
     }
 
     pub fn to_morgana(&self) -> MorganaType {

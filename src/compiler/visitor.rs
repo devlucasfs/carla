@@ -2,9 +2,9 @@ use crate::{
     compiler::{
         iterator::ContextIterator,
         nesting::Context::{self, Block, Common},
-        node::Node::{self, Nop},
+        node::Node::{self, Expression, Nop},
         patterns,
-        symbols::Symbols,
+        symbols::{Symbol, Symbols},
     },
     utils::compiler_outputs::CompilerOutputs,
 };
@@ -37,6 +37,18 @@ pub fn work(ctx: &Vec<Context>, syms: &mut Symbols) -> Vec<Node> {
 
             Common(token) => {
                 let data = patterns::handler(iterator, syms, &token).unwrap_or(Nop);
+
+                if let (Expression(expr, _), Some(Node::Declaration(var))) = (&data, nodes.last()) {
+                    if var._type.is_none() {
+                        let ty = Box::new(expr.expr().ty());
+                        let name = &var.identifier;
+                        if let Some(Symbol::Variable(_, a, b)) = syms.lookup(name).cloned() {
+                            syms.erase(name);
+                            syms.push(name, Symbol::Variable(Some(ty), a, b));
+                        }
+                    }
+                }
+
                 nodes.push(data);
             }
         }

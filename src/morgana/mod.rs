@@ -1,4 +1,10 @@
-use crate::compiler::codegen::Codegen;
+use std::collections::HashMap;
+
+use crate::compiler::{
+    codegen::Codegen,
+    patterns::{expressions::ExprId, types::CarlaType},
+    symbols::Symbols,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MorganaType {
@@ -24,6 +30,40 @@ impl MorganaType {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum MorganaContext {
+    Declaration,
+    Arguments,
+
+    #[default]
+    Unknown,
+}
+
+#[derive(Debug)]
+pub struct MorganaExpr<'a> {
+    pub syms: &'a mut Symbols,
+    pub ctx: MorganaContext,
+    pub vals: HashMap<ExprId, (String, CarlaType)>,
+    pub out: String,
+    pub tmp: usize,
+}
+
+pub trait MorganaGenerator<T> {
+    fn to_morgana(&mut self, data: &T) -> (String, CarlaType);
+}
+
+impl<'a> MorganaExpr<'a> {
+    pub fn new(ctx: MorganaContext, syms: &'a mut Symbols) -> Self {
+        Self {
+            syms,
+            ctx,
+            vals: HashMap::new(),
+            out: String::new(),
+            tmp: 0,
         }
     }
 }
@@ -81,6 +121,10 @@ pub fn get_function_ret(
 
 pub fn write(ctx: &mut Codegen, content: &String) {
     if !content.is_empty() {
-        ctx.append(format!("{content}\n"));
+        ctx.append(format!("{content}"));
     }
+}
+
+pub fn rename(ctx: &mut Codegen, lhs: &String, rhs: &String) {
+    ctx.append(format!("{lhs} = move {rhs}\n"));
 }

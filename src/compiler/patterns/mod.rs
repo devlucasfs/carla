@@ -5,7 +5,7 @@ use crate::{
         iterator::ContextIterator,
         node::Node,
         scanner::{
-            Keywords::{Extern, Fn, Using},
+            Keywords::{Extern, Fn, Let, Using},
             Token,
             TokenKind::Keyword,
         },
@@ -67,6 +67,15 @@ pub fn handler(
     }
 
     match token.kind {
+        Keyword(Let) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "Declaration parser",
+                declaration::work(token, syms, iterator)
+            );
+        }
+
         Keyword(Fn) => {
             try_pattern!(
                 iterator,

@@ -1,15 +1,6 @@
-using nashj = |generic_ptr, uint, uint, uint, generic_ptr, generic_ptr, generic_ptr|;
-using qitah = generic_ptr;
-
-extern nashj nashj_start = fn(uint size);
-extern qitah nashj_alloc = fn(nashj* athar, int size);
-extern byte* nashj_getraw = fn(qitah mem);
-extern void nashj_dump = fn(nashj* athar, qitah mem);
-extern int nashj_coalesce = fn(nashj* athar);
-extern void nashj_reset = fn(nashj* athar);
-extern void nashj_destroy = fn(nashj* athar);
+..@import("./nashj.crl");
 
 void _start = fn() {
-    nashj pool = nashj_start(-512);
-    qitah mem = nashj_alloc(&pool, 128);
+    let allocator := nashj_start(1024);
+    let mem := nashj_alloc(&allocator, 128);
 }

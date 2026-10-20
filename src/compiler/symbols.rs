@@ -10,12 +10,12 @@ type Stack<T> = Vec<T>;
 pub enum Symbol {
     BType(MorganaType),
     TypeAlias(Box<CarlaType>),
-    Variable(Box<CarlaType>, bool, bool),
+    Variable(Option<Box<CarlaType>>, bool, bool),
     ExternFunction(Box<CarlaType>, Vec<Arg>),
     // Codegen symbols
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Symbols {
     stack: Stack<Vec<(String, Symbol)>>,
 }
@@ -55,11 +55,13 @@ impl Symbols {
     }
 
     pub fn erase<T: ToString>(&mut self, id: T) {
-        let Some(top) = self.stack.last_mut() else {
-            CompilerOutputs::fatal_internal("Can't reach the symbol stack top");
-            unreachable!()
-        };
+        let id = id.to_string();
 
-        top.pop_if(|x| x.0 == id.to_string());
+        for scope in self.stack.iter_mut().rev() {
+            if let Some(pos) = scope.iter().position(|(name, _)| *name == id) {
+                scope.remove(pos);
+                return;
+            }
+        }
     }
 }
