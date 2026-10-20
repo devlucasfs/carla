@@ -5,7 +5,7 @@ use crate::{
         iterator::ContextIterator,
         node::Node,
         scanner::{
-            Keywords::{Defer, Extern, Fn, Let, Using},
+            Keywords::{Defer, Extern, Fn, Let, Unfold, Using},
             Token,
             TokenKind::Keyword,
         },
@@ -20,6 +20,7 @@ pub mod expressions;
 pub mod r#extern;
 pub mod lambda;
 pub mod types;
+pub mod unfold;
 pub mod using;
 
 macro_rules! try_pattern {
@@ -103,6 +104,7 @@ pub fn handler(
                 using::work(token, syms, iterator)
             );
         }
+
         Keyword(Extern) => {
             try_pattern!(
                 iterator,
@@ -111,6 +113,16 @@ pub fn handler(
                 r#extern::work(token, syms, iterator)
             );
         }
+
+        Keyword(Unfold) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "Unfold data parser",
+                unfold::work(token, syms, iterator)
+            );
+        }
+
         _ => {}
     };
 

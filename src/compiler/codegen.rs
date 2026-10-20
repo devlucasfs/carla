@@ -1,11 +1,14 @@
 use crate::{
     compiler::{
-        node::Node::{self, Declaration, Declare, Expression, Function, Nop, STMTDefer},
+        node::Node::{
+            self, Declaration, Declare, Expression, Function, Nop, STMTDefer, Unfoldable,
+        },
         patterns::{
             expressions::{Compiled, Expr, Operand, Step, StepOp},
             r#extern::Extern,
             lambda::LambdaRunner,
             types::CarlaType,
+            unfold::Unfold,
         },
         symbols::{
             Symbol::{ExternFunction, Variable},
@@ -257,6 +260,20 @@ impl Codegen {
                             }
                         }
                         morgana::_extern(self, ret.to_morgana(), identifier.clone(), args);
+                    }
+                },
+
+                (Unfoldable(decl), _) => match decl {
+                    Unfold::Func(ret, params, identifier) => {
+                        let mut args = vec![];
+                        let mut carla_args = vec![];
+                        for arg in &params {
+                            for _ in 0..arg.ids.len() {
+                                carla_args.push(arg.ty.clone());
+                                args.push(arg.ty.to_morgana());
+                            }
+                        }
+                        morgana::unfold(self, ret.to_morgana(), identifier.clone(), args);
                     }
                 },
 

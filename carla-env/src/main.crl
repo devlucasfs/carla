@@ -1,17 +1,4 @@
 ..@import("./tests.crl");
-
-int main = fn () {
-    let allocator := nashj_start(1024);
-    defer nashj_destroy(&allocator);
-
-    let mem := nashj_alloc(&allocator, 32);
-    defer nashj_dump(&allocator, mem);
-
-    development_fill(mem, 0, 14); -- fill with Hello world
-    development_debug(mem);
-
-    0
-}
-
-
-..@import("./entry.crl");
+unfold int main = fn();
+void _start = fn() -> development_exit(main());
+int main = fn() -> 0;

@@ -1,1 +1,2 @@
+unfold int main = fn();
 void _start = fn() -> development_exit(main());

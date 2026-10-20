@@ -8,7 +8,10 @@ use crate::compiler::{
         Token,
         TokenKind::{Identifier, Keyword, Semi, Sign, Walrus},
     },
-    symbols::{Symbol, Symbols},
+    symbols::{
+        Symbol::{self, UnfoldFunction},
+        Symbols,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +44,14 @@ pub fn work(
     let Identifier(name) = &identifier.kind else {
         return Err(err);
     };
+
+    if let Some(sym) = syms.lookup(name) {
+        let UnfoldFunction(_, _) = sym else {
+            return Err(format!("{name} is already known"));
+        };
+
+        syms.erase(name);
+    }
 
     match iterator.next() {
         Some(Common(tk)) if [Sign, Semi, Walrus].contains(&tk.kind) => {

@@ -130,8 +130,9 @@ pub fn work(
                 return Err(err);
             }
 
-            let Ok(Expression(expr, eof)) = expressions::work(next, syms, iterator) else {
-                return Err(err);
+            let e = expressions::work(next, syms, iterator);
+            let Ok(Expression(expr, eof)) = e else {
+                return e;
             };
 
             if eof {

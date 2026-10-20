@@ -12,7 +12,7 @@ pub enum Symbol {
     TypeAlias(Box<CarlaType>),
     Variable(Option<Box<CarlaType>>, bool, bool),
     ExternFunction(Box<CarlaType>, Vec<Arg>),
-    // Codegen symbols
+    UnfoldFunction(Box<CarlaType>, Vec<Arg>),
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]

@@ -3,8 +3,8 @@ use crate::{
         BinOP::{Different, Equals, Greater, GreaterEqual, IterConcat, Less, LessEqual},
         BitOp::{AND, LSH, NOT, OR, RSH, XOR},
         Keywords::{
-            Const, Constexpr, Defer, Else, Extern, Fn, For, If, Let, Puts, Return, Syscall, Using,
-            Var, While,
+            Const, Constexpr, Defer, Else, Extern, Fn, For, If, Let, Puts, Return, Syscall, Unfold,
+            Using, Var, While,
         },
         MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star},
         PBB::{Brace, Bracket, Paren},
@@ -34,6 +34,7 @@ pub enum Keywords {
     Fn,
     While,
     Using,
+    Unfold,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -132,10 +133,11 @@ fn is_keyword(identifier: &str) -> Option<Keywords> {
         "return" => Some(Return),
         "extern" => Some(Extern),
         "syscall!" => Some(Syscall),
-        "puts" => Some(Puts),
+        "unfold" => Some(Unfold),
         "while" => Some(While),
         "using" => Some(Using),
         "defer" => Some(Defer),
+        "puts" => Some(Puts),
         "for" => Some(For),
         "fn" => Some(Fn),
         _ => None,

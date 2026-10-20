@@ -17,7 +17,7 @@ use crate::{
             },
         },
         symbols::{
-            Symbol::{self, ExternFunction, Variable},
+            Symbol::{self, ExternFunction, UnfoldFunction, Variable},
             Symbols,
         },
     },
@@ -373,7 +373,7 @@ fn symbol_ty(id: &str, sym: &Symbol) -> Result<CarlaType, String> {
     match sym {
         Variable(Some(t), _, _) => Ok((**t).clone()),
         Variable(None, _, _) => Err(format!("a variável '{id}' ainda não tem tipo definido")),
-        ExternFunction(ret, _) => Ok((**ret).clone()),
+        ExternFunction(ret, _) | UnfoldFunction(ret, _) => Ok((**ret).clone()),
         _ => Err(format!("'{id}' não é um valor")),
     }
 }
@@ -492,6 +492,7 @@ fn parse_prefix(
             let is_call = match sym {
                 Variable(_, _, func) => *func,
                 ExternFunction(_, _) => true,
+                UnfoldFunction(_, _) => true,
                 _ => return Err(format!("{id} isn't a valid identifier")),
             };
 

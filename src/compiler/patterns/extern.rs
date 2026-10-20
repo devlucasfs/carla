@@ -24,7 +24,9 @@ pub fn work(
     iterator: &mut ContextIterator<'_>,
 ) -> Result<Node, String> {
     let Some(Common(first)) = iterator.next() else {
-        return Err("Expected a token after extern, but was found a context block".into());
+        return Err(
+            "Expected a declaration after extern, but was found a context block or EOF".into(),
+        );
     };
 
     let declaration = declaration::work(first, syms, iterator);

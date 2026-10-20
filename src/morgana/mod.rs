@@ -79,6 +79,17 @@ pub fn _extern(ctx: &mut Codegen, ret: MorganaType, identifier: String, args: Ve
     ));
 }
 
+pub fn unfold(ctx: &mut Codegen, ret: MorganaType, identifier: String, args: Vec<MorganaType>) {
+    ctx.append(format!(
+        "unfold {} {identifier}({})\n",
+        ret.to_string(),
+        args.iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>()
+            .join(", "),
+    ));
+}
+
 pub fn function(
     ctx: &mut Codegen,
     ret: MorganaType,

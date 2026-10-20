@@ -1,6 +1,6 @@
 use crate::compiler::patterns::{
     declaration::Variable, expressions::Compiled, r#extern::Extern, lambda::Lambda,
-    types::CarlaType,
+    types::CarlaType, unfold::Unfold,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -11,5 +11,6 @@ pub enum Node {
     STMTDefer(Compiled),
     Function(Lambda),
     Declare(Extern),
+    Unfoldable(Unfold),
     Nop,
 }
