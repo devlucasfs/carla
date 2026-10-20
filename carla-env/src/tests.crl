@@ -1,0 +1,4 @@
+..@import("./nashj.crl");
+extern void development_fill = fn(qitah addr, int start, int end);
+extern void development_debug = fn(qitah addr);
+extern void development_exit = fn(int code);

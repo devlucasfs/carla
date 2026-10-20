@@ -1,4 +1,4 @@
-using nashj = |generic_ptr, uint, uint, uint, generic_ptr, generic_ptr, generic_ptr|;
+using nashj = |generic_ptr, uint, uint, generic_ptr, uint, generic_ptr, generic_ptr, generic_ptr|;
 using qitah = generic_ptr;
 
 extern nashj nashj_start = fn(uint size);

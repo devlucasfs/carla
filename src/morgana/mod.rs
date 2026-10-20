@@ -87,7 +87,7 @@ pub fn function(
     body: String,
 ) {
     ctx.append(format!(
-        "{} {identifier}({}) {{\n{}{body}}}",
+        "\n{} {identifier}({}) {{\n{}{body}}}\n",
         ret.to_string(),
         args.iter()
             .map(|x| x.1.to_string())
@@ -127,4 +127,8 @@ pub fn write(ctx: &mut Codegen, content: &String) {
 
 pub fn rename(ctx: &mut Codegen, lhs: &String, rhs: &String) {
     ctx.append(format!("{lhs} = move {rhs}\n"));
+}
+
+pub fn ret(ctx: &mut Codegen, data: &String) {
+    ctx.append(format!("ret {data}\n"));
 }

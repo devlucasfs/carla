@@ -68,7 +68,7 @@ impl Command {
         let contexts = nesting::work(scanner.tokens);
         let nodes = visitor::work(&contexts, &mut symbols);
 
-        let code = Codegen::new(nodes.clone()).generate(&mut symbols);
+        let code = Codegen::new(nodes.clone()).generate(&mut symbols, None);
         println!("\n-------------------- OUTPUT:\n\n{code}");
         let temp_file = format!("out.{}.morg", uuid::gen_hex(265));
         let morgana_temp = env::temp_dir().join(temp_file);

@@ -2,9 +2,10 @@ use crate::{
     compiler::{
         iterator::ContextIterator,
         nesting::Context::{self, Block, Common},
-        node::Node::{self, Function, InternalType, Nop},
+        node::Node::{self, Expression, Function, InternalType, Nop},
         patterns::{
-            lambda::LambdaRunner::{Foward, Scope},
+            expressions::{self, Compiled},
+            lambda::LambdaRunner::{Expr, Foward, Scope},
             types::{self, CarlaType},
         },
         scanner::{
@@ -20,8 +21,8 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub enum LambdaRunner {
     Scope(Vec<Context>),
+    Expr(Compiled),
     Foward,
-    Expr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,7 +121,31 @@ pub fn work(
             args,
         })),
         Some(Common(arrow)) if arrow.kind == Arrow => {
-            todo!("parse return type")
+            let err = "Enter a valid expression in the function return".into();
+            let Some(Common(next)) = iterator.next() else {
+                return Err(err);
+            };
+
+            if !expressions::starts_with(&next.kind) {
+                return Err(err);
+            }
+
+            let Ok(Expression(expr, eof)) = expressions::work(next, syms, iterator) else {
+                return Err(err);
+            };
+
+            if eof {
+                return Err(
+                    "A single line function return value can't be finished with EOF or EOC".into(),
+                );
+            }
+
+            Ok(Function(Lambda {
+                run: Expr(expr),
+                no_mangled: false,
+                public: true,
+                args,
+            }))
         }
         Some(Block(ppb, body_ctx)) if ppb == &Brace => Ok(Function(Lambda {
             run: Scope(body_ctx.clone()),

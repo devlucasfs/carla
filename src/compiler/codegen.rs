@@ -1,16 +1,22 @@
 use crate::{
     compiler::{
-        node::Node::{self, Declaration, Declare, Expression, Function, Nop},
+        node::Node::{self, Declaration, Declare, Expression, Function, Nop, STMTDefer},
         patterns::{
             expressions::{Compiled, Expr, Operand, Step, StepOp},
             r#extern::Extern,
             lambda::LambdaRunner,
             types::CarlaType,
         },
-        symbols::{Symbol::Variable, Symbols},
+        symbols::{
+            Symbol::{ExternFunction, Variable},
+            Symbols,
+        },
         visitor,
     },
-    morgana::{self, MorganaContext, MorganaExpr, MorganaGenerator},
+    morgana::{
+        self, MorganaContext, MorganaExpr, MorganaGenerator,
+        MorganaType::{self, Void},
+    },
     utils::{compiler_outputs::CompilerOutputs, uuid},
 };
 
@@ -22,7 +28,7 @@ pub struct Codegen {
 
 impl<'a> MorganaExpr<'a> {
     fn fresh(&mut self) -> String {
-        ["t", &uuid::gen_hex(32)].concat()
+        ["t", &uuid::gen_hex(16 * 3)].concat()
     }
 
     fn line(&mut self, s: String) {
@@ -39,8 +45,18 @@ impl<'a> MorganaExpr<'a> {
                     parts.push(v);
                 }
 
+                let ty = match self.syms.lookup(&name).unwrap() {
+                    Variable(Some(ty), _, _) => ty.as_ref().clone(),
+                    ExternFunction(ty, _) => ty.as_ref().clone(),
+                    _ => todo!(),
+                };
+
                 let t = self.fresh();
-                self.line(format!("{t} = call {name}({})", parts.join(", ")));
+                if ty.to_morgana() == MorganaType::Void {
+                    self.line(format!("call {name}({})", parts.join(", ")));
+                } else {
+                    self.line(format!("{t} = call {name}({})", parts.join(", ")));
+                }
 
                 (t, s.ty.clone())
             }
@@ -80,11 +96,16 @@ impl<'a> MorganaExpr<'a> {
                 .cloned()
                 .ok_or_else(|| "temporário usado antes de ser definido".to_string()),
 
-            _ => todo!(), // Operand::Var(name, ty) => {
-                          // let t = self.fresh();
-                          // self.line(format!("{t} = load {}, ptr %{name}", ll_ty(ty)?));
-                          // Ok((t, ty.clone()))
-                          // }
+            Operand::Var(name) => {
+                let ty = match self.syms.lookup(&name).unwrap() {
+                    Variable(Some(ty), _, _) => ty.as_ref().clone(),
+                    _ => todo!(),
+                };
+
+                let t = self.fresh();
+                self.line(format!("{t} = load {name}"));
+                Ok((t, ty.clone()))
+            }
         }
     }
 }
@@ -92,7 +113,7 @@ impl<'a> MorganaExpr<'a> {
 impl<'a> MorganaGenerator<Compiled> for MorganaExpr<'a> {
     fn to_morgana(&mut self, data: &Compiled) -> (String, CarlaType) {
         match data {
-            Compiled::Const(_) => todo!(),
+            Compiled::Const(expr) => self.value(&Operand::Const(expr.clone())).unwrap(),
 
             Compiled::Lazy(iterator) => {
                 let mut it = iterator.clone();
@@ -120,10 +141,22 @@ impl Codegen {
         self.code.push_str(&data.to_string());
     }
 
-    pub fn generate(&mut self, sym: &mut Symbols) -> String {
+    pub fn generate(&mut self, sym: &mut Symbols, ret: Option<CarlaType>) -> String {
+        let mut defers = vec![];
+
+        let make_defers = |r: &mut Codegen, sym: &mut Symbols, defers: &mut Vec<Compiled>| {
+            while let Some(defer) = defers.pop() {
+                let mut s = sym.clone();
+                let mut morg = MorganaExpr::new(MorganaContext::Declaration, &mut s);
+                _ = morg.to_morgana(&defer);
+                morgana::write(r, &morg.out);
+            }
+        };
+
         while self.nodes.len() > 0 {
             match (self.nodes.remove(0), (self.nodes.clone()).first()) {
                 (Nop, _) => {}
+                (STMTDefer(expr), _) => defers.push(expr),
                 (Declaration(decl), Some(Function(func))) => {
                     if decl._type.is_none() {
                         CompilerOutputs::fatal("You can't define a function without a return type");
@@ -143,7 +176,17 @@ impl Codegen {
                             sym.push_scope();
                             let nodes = visitor::work(&ctx, sym);
                             let mut cgen = Codegen::new(nodes);
-                            let str = cgen.generate(sym);
+                            let str = cgen
+                                .generate(sym, Some(decl._type.clone().unwrap().as_ref().clone()));
+                            sym.pop_scope();
+                            str
+                        }
+                        LambdaRunner::Expr(expr) => {
+                            sym.push_scope();
+                            let nodes = vec![Expression(expr.clone(), true)];
+                            let mut cgen = Codegen::new(nodes);
+                            let str = cgen
+                                .generate(sym, Some(decl._type.clone().unwrap().as_ref().clone()));
                             sym.pop_scope();
                             str
                         }
@@ -157,7 +200,8 @@ impl Codegen {
                 (Declaration(decl), Some(Expression(expr, _))) => {
                     let mut s = sym.clone();
                     let mut morg = MorganaExpr::new(MorganaContext::Declaration, &mut s);
-                    let (result, ty) = morg.to_morgana(&expr);
+                    let (result, ty) = morg.to_morgana(&expr.clone());
+                    self.nodes.remove(0);
 
                     if let Some(tty) = decl._type {
                         let (x, y) = (tty.as_ref().to_string(), ty.to_string());
@@ -174,6 +218,31 @@ impl Codegen {
 
                     morgana::write(self, &morg.out);
                     morgana::rename(self, &decl.identifier, &result);
+                }
+
+                (Expression(expr, is_eof), _) => {
+                    let mut s = sym.clone();
+                    let mut morg = MorganaExpr::new(MorganaContext::Declaration, &mut s);
+                    let (result, ty) = morg.to_morgana(&expr.clone());
+
+                    morgana::write(self, &morg.out);
+
+                    if is_eof && ret.is_some() {
+                        let ret_t = ret.clone().unwrap();
+                        let (x, y) = (ret_t.to_string(), ty.to_string());
+
+                        if x != y {
+                            CompilerOutputs::fatal(format!(
+                                "You can't return a {y}, cuz was expected {x}",
+                            ));
+                        }
+
+                        make_defers(self, sym, &mut defers);
+
+                        if ret_t.to_morgana() != Void {
+                            morgana::ret(self, &result);
+                        }
+                    }
                 }
 
                 (Declare(decl), _) => match decl {
@@ -194,6 +263,8 @@ impl Codegen {
                 _ => {}
             }
         }
+
+        make_defers(self, sym, &mut defers);
 
         self.code.clone()
     }

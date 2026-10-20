@@ -8,6 +8,7 @@ pub enum Node {
     InternalType(CarlaType),
     Declaration(Variable),
     Expression(Compiled, bool),
+    STMTDefer(Compiled),
     Function(Lambda),
     Declare(Extern),
     Nop,

@@ -5,7 +5,7 @@ use crate::{
         iterator::ContextIterator,
         node::Node,
         scanner::{
-            Keywords::{Extern, Fn, Let, Using},
+            Keywords::{Defer, Extern, Fn, Let, Using},
             Token,
             TokenKind::Keyword,
         },
@@ -15,6 +15,7 @@ use crate::{
 };
 
 pub mod declaration;
+pub mod defer;
 pub mod expressions;
 pub mod r#extern;
 pub mod lambda;
@@ -84,6 +85,16 @@ pub fn handler(
                 lambda::work(token, syms, iterator)
             );
         }
+
+        Keyword(Defer) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "Defer parser",
+                defer::work(token, syms, iterator)
+            );
+        }
+
         Keyword(Using) => {
             try_pattern!(
                 iterator,
