@@ -1,5 +1,6 @@
 use crate::{
     compiler::{
+        abi,
         iterator::ContextIterator,
         nesting::Context::{Block, Common},
         node::Node::{self, InternalType, Nop},
@@ -37,7 +38,10 @@ pub fn work(
                 return Err("A type alias need a valid type after the =".into());
             };
 
-            syms.push(name, Symbol::TypeAlias(Box::from(ty)));
+            syms.push(
+                abi::sym_name_by_abi(syms, name),
+                Symbol::TypeAlias(Box::from(ty)),
+            );
 
             let err =
                 "After define the type alias you need to use a ; to finish the expression".into();

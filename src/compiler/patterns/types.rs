@@ -1,6 +1,6 @@
 use crate::{
     compiler::{
-        charsert,
+        abi, charsert,
         iterator::ContextIterator,
         nesting::{self, Context},
         node::Node,
@@ -9,7 +9,7 @@ use crate::{
             MathOp::Star,
             PBB::Bracket,
             Scanner, Token,
-            TokenKind::{self, BitOperator, Comma, Identifier, MathOperator, Wild},
+            TokenKind::{self, BitOperator, Comma, Dot, Identifier, MathOperator, Wild},
         },
         symbols::{
             Symbol::{self, BType, TypeAlias},
@@ -189,7 +189,19 @@ pub fn work(
         return parse_tuple(syms, iterator);
     }
 
-    parse_base(token, syms, iterator)
+    parse_base(token, syms, iterator, true).map(Node::InternalType)
+}
+
+/// Reads `Abcd(.Child)*` without requiring every `.` to be a type:
+/// it stops right before a `.member` that isn't a type symbol, leaving the
+/// `.` in the iterator so the expressions parser can treat it as an extended
+/// function reference.
+pub fn parse_path(
+    token: &Token,
+    syms: &mut Symbols,
+    iterator: &mut ContextIterator<'_>,
+) -> Result<CarlaType, String> {
+    parse_base(token, syms, iterator, false)
 }
 
 fn parse_tuple(syms: &mut Symbols, iterator: &mut ContextIterator<'_>) -> Result<Node, String> {
@@ -251,11 +263,15 @@ fn parse_tuple(syms: &mut Symbols, iterator: &mut ContextIterator<'_>) -> Result
     }))
 }
 
+/// `strict = true`: a `.member` that isn't a type symbol is an error
+/// (a `.` after a type is never valid anywhere else in a type context).
+/// `strict = false`: stop before that `.` and return the type read so far.
 fn parse_base(
     token: &Token,
     syms: &mut Symbols,
     iterator: &mut ContextIterator<'_>,
-) -> Result<Node, String> {
+    strict: bool,
+) -> Result<CarlaType, String> {
     let Identifier(id) = &token.kind else {
         return Err(format!("Expected type identifier, found {:?}", token.kind));
     };
@@ -266,6 +282,56 @@ fn parse_base(
 
     if !matches!(symbol, BType(_) | TypeAlias(_)) {
         return Err(format!("Unknown type: {id}"));
+    }
+
+    let mut ty = CarlaType {
+        base: Some(Base {
+            id: id.clone(),
+            symbol: symbol.clone(),
+        }),
+        ..Default::default()
+    };
+
+    // Abcd.Efgh.Ijkl: every segment must be a type symbol
+    while let Some(Context::Common(dot)) = iterator.peek() {
+        if dot.kind != Dot {
+            break;
+        }
+
+        let backup = iterator.position();
+        iterator.next();
+
+        let err = "Expected an identifier after '.'";
+        let Some(Context::Common(member)) = iterator.next() else {
+            return Err(err.into());
+        };
+        let Identifier(member_id) = &member.kind else {
+            return Err(err.into());
+        };
+
+        let full = abi::extension_symbol(&ty, member_id);
+        match syms.lookup(&full) {
+            Some(s) if matches!(s, BType(_) | TypeAlias(_)) => {
+                ty = CarlaType {
+                    base: Some(Base {
+                        id: full,
+                        symbol: s.clone(),
+                    }),
+                    ..Default::default()
+                };
+            }
+            _ if strict => {
+                return Err(format!(
+                    "`{member_id}` is not a type inside `{}`",
+                    ty.to_string()
+                ));
+            }
+            _ => {
+                // not a type: give the `.` back to the expressions parser
+                iterator.def(backup);
+                return Ok(ty);
+            }
+        }
     }
 
     let mut dimensions = Vec::new();
@@ -302,13 +368,7 @@ fn parse_base(
         levels += 1;
     }
 
-    Ok(Node::InternalType(CarlaType {
-        tuple: Vec::new(),
-        levels,
-        base: Some(Base {
-            id: id.clone(),
-            symbol: symbol.clone(),
-        }),
-        dim: dimensions,
-    }))
+    ty.dim = dimensions;
+    ty.levels = levels;
+    Ok(ty)
 }

@@ -18,11 +18,48 @@ pub enum Symbol {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Symbols {
     stack: Stack<Vec<(String, Symbol)>>,
+    extending: Option<CarlaType>,
 }
 
 impl Symbols {
     pub fn new() -> Self {
-        Self { stack: vec![] }
+        Self {
+            stack: vec![],
+            ..Default::default()
+        }
+    }
+
+    pub fn extending(&self) -> Option<&CarlaType> {
+        self.extending.as_ref()
+    }
+
+    pub fn enter_extension(&mut self, ty: CarlaType) {
+        self.extending = Some(ty);
+    }
+
+    pub fn get_extended(&self) -> Option<CarlaType> {
+        self.extending.clone()
+    }
+
+    pub fn temporary<T>(
+        &mut self,
+        vars: &[(String, CarlaType)],
+        f: impl FnOnce(&mut Symbols) -> T,
+    ) -> T {
+        self.push_scope();
+        for (name, ty) in vars {
+            self.push(
+                name,
+                Symbol::Variable(Some(Box::new(ty.clone())), true, false),
+            );
+        }
+        let out = f(self);
+        self.pop_scope();
+        out
+    }
+
+    pub fn leave_extension(&mut self) {
+        self.extending = None;
     }
 
     pub fn push_scope(&mut self) {

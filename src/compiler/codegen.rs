@@ -1,7 +1,7 @@
 use crate::{
     compiler::{
         node::Node::{
-            self, Declaration, Declare, Expression, Function, Nop, STMTDefer, Unfoldable,
+            self, Declaration, Declare, Expression, Extension, Function, Nop, STMTDefer, Unfoldable,
         },
         patterns::{
             expressions::{Compiled, Expr, Operand, Step, StepOp},
@@ -11,7 +11,7 @@ use crate::{
             unfold::Unfold,
         },
         symbols::{
-            Symbol::{ExternFunction, Variable},
+            Symbol::{ExternFunction, UnfoldFunction, Variable},
             Symbols,
         },
         visitor,
@@ -27,6 +27,9 @@ use crate::{
 pub struct Codegen {
     pub nodes: Vec<Node>,
     pub code: String,
+    /// Type of the `extend` block being generated (None outside of one).
+    /// Functions declared with `self` get a pointer to this type as first parameter.
+    pub extending: Option<CarlaType>,
 }
 
 impl<'a> MorganaExpr<'a> {
@@ -50,7 +53,7 @@ impl<'a> MorganaExpr<'a> {
 
                 let ty = match self.syms.lookup(&name).unwrap() {
                     Variable(Some(ty), _, _) => ty.as_ref().clone(),
-                    ExternFunction(ty, _) => ty.as_ref().clone(),
+                    ExternFunction(ty, _) | UnfoldFunction(ty, _) => ty.as_ref().clone(),
                     _ => todo!(),
                 };
 
@@ -73,7 +76,21 @@ impl<'a> MorganaExpr<'a> {
                 let t = self.fresh();
                 self.line(format!("{t} = ptr_to {id}"));
 
-                (t, ty)
+                (t, ty.pointer_to())
+            }
+
+            StepOp::Cast(op, from) => {
+                let (v, _) = self.value(op)?;
+
+                if from.to_morgana() != s.ty.to_morgana() {
+                    return Err(format!(
+                        "conversão de `{}` para `{}` muda a largura e o IR ainda não tem instrução para isso",
+                        from.to_string(),
+                        s.ty.to_string()
+                    ));
+                }
+
+                (v, s.ty.clone())
             }
 
             _ => todo!(),
@@ -166,35 +183,56 @@ impl Codegen {
                     }
 
                     self.nodes.remove(0);
-                    let mut args = vec![];
+
+                    let self_ty: Option<CarlaType> = if func.extension {
+                        let Some(owner) = &self.extending else {
+                            CompilerOutputs::fatal(
+                                "`self` is only allowed in functions inside an extend block",
+                            );
+                            unreachable!();
+                        };
+                        Some(owner.pointer_to())
+                    } else {
+                        None
+                    };
+
+                    let mut params: Vec<(String, CarlaType)> = vec![];
+
+                    if let Some(t) = &self_ty {
+                        params.push(("self".to_string(), t.clone()));
+                    }
 
                     for arg in &func.args {
-                        for i in 0..arg.ids.len() {
-                            args.push((arg.ids[i].clone(), arg.ty.to_morgana()));
+                        for id in &arg.ids {
+                            if params.iter().any(|(name, _)| name == id) {
+                                CompilerOutputs::fatal(format!("Duplicated parameter '{id}'"));
+                            }
+                            params.push((id.clone(), arg.ty.as_ref().clone()));
                         }
                     }
 
-                    let body = match &func.run {
-                        LambdaRunner::Scope(ctx) => {
-                            sym.push_scope();
-                            let nodes = visitor::work(&ctx, sym);
-                            let mut cgen = Codegen::new(nodes);
-                            let str = cgen
-                                .generate(sym, Some(decl._type.clone().unwrap().as_ref().clone()));
-                            sym.pop_scope();
-                            str
-                        }
-                        LambdaRunner::Expr(expr) => {
-                            sym.push_scope();
-                            let nodes = vec![Expression(expr.clone(), true)];
-                            let mut cgen = Codegen::new(nodes);
-                            let str = cgen
-                                .generate(sym, Some(decl._type.clone().unwrap().as_ref().clone()));
-                            sym.pop_scope();
-                            str
-                        }
+                    let args: Vec<_> = params
+                        .iter()
+                        .map(|(name, ty)| (name.clone(), ty.to_morgana()))
+                        .collect();
+
+                    let ret_ty = decl._type.clone().unwrap().as_ref().clone();
+
+                    sym.push_scope();
+
+                    for (name, ty) in &params {
+                        sym.push(name, Variable(Some(Box::new(ty.clone())), true, false));
+                    }
+
+                    let runner = match &func.run {
+                        LambdaRunner::Scope(ctx) => visitor::work(&ctx, sym),
+                        LambdaRunner::Expr(expr) => vec![Expression(expr.clone(), true)],
                         _ => todo!(),
                     };
+
+                    sym.pop_scope();
+                    let mut cgen = Codegen::new(runner);
+                    let body = cgen.generate(sym, Some(ret_ty));
 
                     let ctype = decl._type.unwrap();
                     morgana::function(self, ctype.to_morgana(), decl.identifier, args, body);
@@ -276,6 +314,13 @@ impl Codegen {
                         morgana::unfold(self, ret.to_morgana(), identifier.clone(), args);
                     }
                 },
+
+                (Extension(ty, block), _) => {
+                    let mut cgen = Codegen::new(block);
+                    cgen.extending = Some(ty.clone());
+                    let str = cgen.generate(sym, None);
+                    morgana::write(self, &str);
+                }
 
                 _ => {}
             }

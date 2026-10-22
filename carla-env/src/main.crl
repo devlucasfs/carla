@@ -1,4 +1,32 @@
-..@import("./tests.crl");
 unfold int main = fn();
+extern void development_exit = fn(int code);
 void _start = fn() -> development_exit(main());
-int main = fn() -> 0;
+
+extern void development_debug = fn(generic_ptr qitah);
+extern void development_fill = fn(generic_ptr qitah, int x, int y);
+
+using Nashj = |generic_ptr, uint, uint, generic_ptr, uint, generic_ptr, generic_ptr, generic_ptr|;
+extern Nashj nashj_start = fn(uint size);
+extern generic_ptr nashj_alloc = fn(Nashj* addr, uint size);
+extern void nashj_dump = fn(Nashj* addr, generic_ptr mem);
+extern void nashj_destroy = fn(Nashj* addr);
+
+extend Nashj {
+    using Qitah = generic_ptr;
+    Nashj init = fn(uint size) -> nashj_start(size);
+    void deinit = fn(self) -> nashj_destroy(self);
+    Nashj.Qitah alloc = fn(self, uint size) -> nashj_alloc(self, size) as Nashj.Qitah;
+    void dump = fn(self, Nashj.Qitah qitah) -> nashj_dump(self, qitah);
+}
+
+int main = fn() {
+    let nashj := Nashj.init(512);
+    defer nashj.deinit();
+    let alloc := nashj.alloc(128);
+    defer nashj.dump(alloc);
+
+    development_fill(alloc as generic_ptr, 0, 14);
+    development_debug(alloc as generic_ptr);
+
+    0
+}

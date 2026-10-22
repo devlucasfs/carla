@@ -1,4 +1,5 @@
 use crate::compiler::{
+    abi,
     iterator::ContextIterator,
     nesting::Context::Common,
     node::Node::{self, InternalType},
@@ -71,7 +72,7 @@ pub fn work(
             };
 
             syms.push(
-                name,
+                abi::sym_name_by_abi(syms, name),
                 Symbol::Variable(
                     def_type.clone(),
                     tk.kind == Sign || tk.kind == Walrus,
@@ -80,7 +81,7 @@ pub fn work(
             );
 
             Ok(Node::Declaration(Variable {
-                identifier: name.clone(),
+                identifier: abi::sym_name_by_abi(syms, name),
                 _type: def_type,
                 hopeless: !(tk.kind == Sign || tk.kind == Walrus),
             }))

@@ -113,7 +113,7 @@ pub fn function(
                     .iter()
                     .map(|x| x.0.clone())
                     .collect::<Vec<String>>()
-                    .join(" "),
+                    .join(", "),
                 "\n",
             ]
             .concat()

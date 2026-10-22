@@ -3,8 +3,8 @@ use crate::{
         BinOP::{Different, Equals, Greater, GreaterEqual, IterConcat, Less, LessEqual},
         BitOp::{AND, LSH, NOT, OR, RSH, XOR},
         Keywords::{
-            Const, Constexpr, Defer, Else, Extern, Fn, For, If, Let, Puts, Return, Syscall, Unfold,
-            Using, Var, While,
+            As, Const, Constexpr, Defer, Else, Extend, Extern, Fn, For, If, Let, Mut, Puts, Return,
+            Syscall, Unfold, Using, Var, While,
         },
         MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star},
         PBB::{Brace, Bracket, Paren},
@@ -19,11 +19,13 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Keywords {
+    As,
     If,
     Else,
     Constexpr,
     Const,
     Let,
+    Mut,
     Var,
     Return,
     Syscall,
@@ -35,6 +37,7 @@ pub enum Keywords {
     While,
     Using,
     Unfold,
+    Extend,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,15 +127,18 @@ const SEMI_TOKEN: &Token = &Token {
 
 fn is_keyword(identifier: &str) -> Option<Keywords> {
     match identifier {
+        "as" => Some(As),
         "if" => Some(If),
         "else" => Some(Else),
         "constexpr" => Some(Constexpr),
         "const" => Some(Const),
+        "mut" => Some(Mut),
         "let" => Some(Let),
         "var" => Some(Var),
         "return" => Some(Return),
         "extern" => Some(Extern),
         "syscall!" => Some(Syscall),
+        "extend" => Some(Extend),
         "unfold" => Some(Unfold),
         "while" => Some(While),
         "using" => Some(Using),
@@ -337,7 +343,11 @@ impl Scanner {
                 b'=' => self.push(Sign),
                 b'!' => self.push(Bang),
                 b'.' => self.push(Dot),
-                b'_' if !second.is_ascii_alphabetic() => self.push(Wild),
+                b'_' if !(second.is_ascii_alphanumeric() || second == b'_') => {
+                    self.push(Wild);
+                    i += 1;
+                    continue;
+                }
 
                 b'<' => self.push(BinaryOperator(Less)),
                 b'>' => self.push(BinaryOperator(Greater)),

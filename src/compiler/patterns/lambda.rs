@@ -9,9 +9,10 @@ use crate::{
             types::{self, CarlaType},
         },
         scanner::{
+            Keywords::Mut,
             PBB::{Brace, Paren},
             Token,
-            TokenKind::{Arrow, Comma, Identifier, Semi},
+            TokenKind::{Arrow, Comma, Identifier, Keyword, Semi},
         },
         symbols::Symbols,
     },
@@ -35,8 +36,53 @@ pub struct Arg {
 pub struct Lambda {
     pub public: bool,
     pub no_mangled: bool,
+    pub extension: bool,
+    pub mutable: bool,
     pub args: Vec<Arg>,
     pub run: LambdaRunner,
+}
+
+fn is_self(ctx: &Context) -> bool {
+    matches!(ctx, Common(t) if matches!(&t.kind, Identifier(id) if id == "self"))
+}
+
+fn parse_self(iter: &mut ContextIterator<'_>, in_extend: bool) -> Result<(bool, bool), String> {
+    let mut mutable = false;
+
+    let has_self = match iter.peek() {
+        Some(Common(tk)) if tk.kind == Keyword(Mut) => {
+            iter.next();
+            match iter.next() {
+                Some(ctx) if is_self(ctx) => {}
+                _ => return Err("Expected `self` after `mut`".into()),
+            }
+            mutable = true;
+            true
+        }
+        Some(ctx) if is_self(ctx) => {
+            iter.next();
+            true
+        }
+        _ => false,
+    };
+
+    if !has_self {
+        return Ok((false, false));
+    }
+
+    if !in_extend {
+        return Err("`self` is only allowed in functions inside an extend block".into());
+    }
+
+    match iter.peek() {
+        None => {}
+        Some(Common(tk)) if tk.kind == Comma => {
+            iter.next();
+        }
+        _ => return Err("Expected , or ) after self".into()),
+    }
+
+    Ok((true, mutable))
 }
 
 pub fn parse_args(
@@ -96,10 +142,29 @@ pub fn parse_args(
     Ok(args)
 }
 
+fn typed_params(args: &[Arg]) -> Vec<(String, CarlaType)> {
+    args.iter()
+        .flat_map(|arg| {
+            arg.ids
+                .iter()
+                .map(move |id| (id.clone(), arg.ty.as_ref().clone()))
+        })
+        .collect()
+}
+
 pub fn work(
+    token: &Token,
+    syms: &mut Symbols,
+    iterator: &mut ContextIterator<'_>,
+) -> Result<Node, String> {
+    work_in(token, syms, iterator, false)
+}
+
+pub fn work_in(
     _: &Token,
     syms: &mut Symbols,
     iterator: &mut ContextIterator<'_>,
+    in_extend: bool,
 ) -> Result<Node, String> {
     let err = "After a fn you need to use a parenthesis context block with arguments".into();
     let Some(Block(block, ctx)) = iterator.next() else {
@@ -111,6 +176,7 @@ pub fn work(
     }
 
     let mut iter = ContextIterator::new(ctx.as_slice(), 0);
+    let (extension, mutable) = parse_self(&mut iter, in_extend)?;
     let args = parse_args(&mut iter, syms)?;
 
     match iterator.next() {
@@ -118,6 +184,8 @@ pub fn work(
             run: Foward,
             no_mangled: false,
             public: true,
+            extension,
+            mutable,
             args,
         })),
         Some(Common(arrow)) if arrow.kind == Arrow => {
@@ -130,7 +198,13 @@ pub fn work(
                 return Err(err);
             }
 
-            let e = expressions::work(next, syms, iterator);
+            let mut params = typed_params(&args);
+            if extension {
+                params.insert(0, ("self".into(), syms.get_extended().unwrap().clone()));
+            }
+
+            let e = syms.temporary(&params, |s| expressions::work(next, s, iterator));
+
             let Ok(Expression(expr, eof)) = e else {
                 return e;
             };
@@ -145,6 +219,8 @@ pub fn work(
                 run: Expr(expr),
                 no_mangled: false,
                 public: true,
+                extension,
+                mutable,
                 args,
             }))
         }
@@ -152,6 +228,8 @@ pub fn work(
             run: Scope(body_ctx.clone()),
             no_mangled: false,
             public: true,
+            extension,
+            mutable,
             args,
         })),
         Some(Block(used, _)) => Err(format!(

@@ -2,26 +2,28 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::{
     compiler::{
+        abi,
         iterator::ContextIterator,
         nesting::Context::{Block, Common},
         node::Node::{self, Expression},
-        patterns::types::CarlaType,
+        patterns::types::{self, Base, CarlaType},
         scanner::{
             BitOp::AND,
+            Keywords::As,
             MathOp::{self, Minus},
             PBB::Paren,
             Token,
             TokenKind::{
-                self, Bang, Bool, Comma, Float, Hexa, Identifier, Integer, MathOperator, Nil,
-                Octal, Semi, String as Str,
+                self, Bang, Bool, Comma, Dot, Float, Hexa, Identifier, Integer, Keyword,
+                MathOperator, Nil, Octal, Semi, String as Str,
             },
         },
         symbols::{
-            Symbol::{self, ExternFunction, UnfoldFunction, Variable},
+            Symbol::{self, BType, ExternFunction, TypeAlias, UnfoldFunction, Variable},
             Symbols,
         },
     },
-    morgana::MorganaType,
+    morgana::MorganaType::{self, Ptr},
 };
 
 const DEFAULT_INT: &str = "int";
@@ -55,6 +57,8 @@ pub enum Expr {
     Call(String, Vec<Expr>, CarlaType),
     Unary(UnOp, Box<Expr>, CarlaType),
     Binary(BinOp, Box<Expr>, Box<Expr>, CarlaType),
+    /// `value as Type`: the CarlaType is the target type.
+    Cast(Box<Expr>, CarlaType),
 }
 
 impl Expr {
@@ -68,7 +72,8 @@ impl Expr {
             | Expr::Pointer(_, t)
             | Expr::Call(_, _, t)
             | Expr::Unary(_, _, t)
-            | Expr::Binary(_, _, _, t) => t.clone(),
+            | Expr::Binary(_, _, _, t)
+            | Expr::Cast(_, t) => t.clone(),
         }
     }
 
@@ -119,6 +124,7 @@ pub enum StepOp {
     Unary(UnOp, Operand),
     Binary(BinOp, Operand, Operand),
     Call(String, Vec<Operand>),
+    Cast(Operand, CarlaType),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -194,6 +200,10 @@ fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
             let a = args.iter().map(|x| lower(x, out)).collect();
             emit(out, t, StepOp::Call(n.clone(), a))
         }
+        Expr::Cast(x, t) => {
+            let a = lower(x, out);
+            emit(out, t, StepOp::Cast(a, x.ty()))
+        }
         lit => Operand::Const(lit.clone()),
     }
 }
@@ -264,7 +274,7 @@ fn type_binary(op: BinOp, l: &CarlaType, r: &CarlaType) -> Result<CarlaType, Str
 
     if ml != mr {
         return Err(format!(
-            "tipos diferentes em {op:?}: `{}` e `{}` (sem conversão implícita)",
+            "tipos diferentes em {op:?}: `{}` e `{}` (sem conversão implícita; use `as`)",
             l.to_string(),
             r.to_string()
         ));
@@ -344,6 +354,82 @@ fn fold_binary(op: BinOp, l: &Expr, r: &Expr, ty: &CarlaType) -> Result<Option<E
     Ok(Some(Expr::Integer(v, ty.clone())))
 }
 
+// ---------------------------------------------------------------------------
+// `as` (cast)
+// ---------------------------------------------------------------------------
+
+fn is_ptr(t: &CarlaType) -> bool {
+    t.levels > 0
+        || match &t.base {
+            Some(Base {
+                symbol: BType(MorganaType::Ptr),
+                ..
+            }) => true,
+            Some(Base {
+                symbol: TypeAlias(ty),
+                ..
+            }) => is_ptr(ty.as_ref()),
+            _ => false,
+        }
+}
+
+fn is_int_ty(t: &CarlaType) -> bool {
+    !is_ptr(t) && morgana_of(t).map_or(false, |m| is_int(&m))
+}
+
+/// 64-bit integer: the only integer that can be converted from/to a pointer.
+fn is_word(t: &CarlaType) -> bool {
+    !is_ptr(t)
+        && matches!(
+            morgana_of(t),
+            Some(MorganaType::Integer(64)) | Some(MorganaType::UInteger(64))
+        )
+}
+
+/// Checks that `x` can be converted to `to` and builds the cast.
+/// Constant integers/booleans are converted at compile time (and must fit).
+fn make_cast(x: Expr, to: CarlaType) -> Result<Expr, String> {
+    let from = x.ty();
+    let (fs, ts) = (from.to_string(), to.to_string());
+
+    // same type: nothing to do
+    if fs == ts {
+        return Ok(x);
+    }
+
+    let (fp, tp) = (is_ptr(&from), is_ptr(&to));
+
+    let compatible = (is_int_ty(&from) && is_int_ty(&to)) // integer <-> integer
+        || (fp && tp)                                      // pointer <-> pointer
+        || (fp && is_word(&to))                            // pointer -> 64-bit integer
+        || (is_word(&from) && tp); // 64-bit integer -> pointer
+
+    if !compatible {
+        return Err(format!(
+            "não é possível converter `{fs}` para `{ts}` \
+             (só inteiro <-> inteiro, ponteiro <-> ponteiro e ponteiro <-> inteiro de 64 bits)"
+        ));
+    }
+
+    if is_int_ty(&to) {
+        let folded = match &x {
+            Expr::Integer(v, _) => Some(*v),
+            Expr::Boolean(b, _) => Some(*b as i128),
+            _ => None,
+        };
+        if let Some(v) = folded {
+            check_fits(v, &to)?;
+            return Ok(Expr::Integer(v, to));
+        }
+    }
+
+    Ok(Expr::Cast(Box::new(x), to))
+}
+
+// ---------------------------------------------------------------------------
+// Parsing
+// ---------------------------------------------------------------------------
+
 pub fn starts_with(kind: &TokenKind) -> bool {
     matches!(
         kind,
@@ -404,7 +490,10 @@ fn binop_of(k: &TokenKind) -> Option<(BinOp, u8, u8)> {
     })
 }
 
-const PREFIX_BP: u8 = 9;
+/// `as` binds tighter than `* / %` and looser than prefix operators:
+/// `-x as u8` is `(-x) as u8`, and `a * b as T` is `a * (b as T)`.
+const AS_BP: u8 = 9;
+const PREFIX_BP: u8 = 11;
 
 fn parse_expr(
     min_bp: u8,
@@ -424,6 +513,7 @@ fn parse_expr(
         Some(Common(tk)) => parse_prefix(tk, syms, it)?,
         Some(_) => return Err("bloco inesperado no início da expressão".into()),
     };
+    let lhs = parse_postfix(lhs, syms, it)?;
     climb(lhs, min_bp, syms, it)
 }
 
@@ -435,6 +525,23 @@ fn climb(
 ) -> Result<Expr, String> {
     loop {
         let Some(Common(tk)) = it.peek() else { break };
+
+        // `<expr> as <type>`
+        if tk.kind == Keyword(As) {
+            if AS_BP < min_bp {
+                break;
+            }
+            it.next();
+
+            let err = "Expected a type after `as`";
+            let Some(Common(first)) = it.next() else {
+                return Err(err.into());
+            };
+            let target = types::parse_path(first, syms, it)?;
+            lhs = make_cast(lhs, target)?;
+            continue;
+        }
+
         let Some((op, lbp, rbp)) = binop_of(&tk.kind) else {
             break;
         };
@@ -446,6 +553,83 @@ fn climb(
         lhs = make_binary(op, lhs, rhs)?;
     }
     Ok(lhs)
+}
+
+/// Postfix `.`: `value.function(args)` becomes `function(value, args)`,
+/// where `function` is an extended function of the value's type.
+/// It binds tighter than any prefix/binary operator.
+fn parse_postfix(
+    mut lhs: Expr,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Expr, String> {
+    while let Some(Common(tk)) = it.peek() {
+        if tk.kind != Dot {
+            break;
+        }
+        it.next();
+
+        let err = "Expected a function name after '.'";
+        let Some(Common(member)) = it.next() else {
+            return Err(err.into());
+        };
+        let Identifier(member_id) = &member.kind else {
+            return Err(err.into());
+        };
+
+        let owner = lhs.ty();
+        lhs = extended_call(&owner, Some(lhs), member_id, syms, it)?;
+    }
+    Ok(lhs)
+}
+
+fn self_ref(receiver: Expr) -> Result<Expr, String> {
+    match receiver {
+        Expr::Var(name, ty) => Ok(Expr::Pointer(name, ty.pointer_to())),
+        other => Err(format!(
+            "cannot take a reference to a temporary value of type `{}` to use as `self`; \
+             store it in a variable first",
+            other.ty().to_string()
+        )),
+    }
+}
+
+/// Resolves `owner.member(...)` to the ABI symbol of an extended function.
+/// `receiver` is the value on the left of the `.` (None for `Type.member(...)`),
+/// and is passed as the first argument (the `self`).
+fn extended_call(
+    owner: &CarlaType,
+    receiver: Option<Expr>,
+    member: &str,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Expr, String> {
+    let full = abi::extension_symbol(owner, member);
+
+    let Some(sym) = syms.lookup(&full) else {
+        return Err(format!(
+            "`{}` has no extended function `{member}` ({full})",
+            owner.to_string()
+        ));
+    };
+
+    if !matches!(
+        sym,
+        Variable(_, _, true) | ExternFunction(_, _) | UnfoldFunction(_, _)
+    ) {
+        return Err(format!("`{full}` isn't a function"));
+    }
+
+    let ret = symbol_ty(&full, sym)?;
+    let Expr::Call(name, mut args, ty) = parse_call(&full, ret, syms, it)? else {
+        unreachable!()
+    };
+
+    if let Some(r) = receiver {
+        args.insert(0, self_ref(r)?);
+    }
+
+    Ok(Expr::Call(name, args, ty))
 }
 
 fn parse_prefix(
@@ -488,6 +672,33 @@ fn parse_prefix(
             let Some(sym) = syms.lookup(id) else {
                 return Err(format!("simbolo n existente : '{id}'"));
             };
+
+            // The identifier is a type (InternalType): the `.` that follows
+            // refers to an extended function of that type, e.g. `Abcd.new(1)`.
+            let is_type = matches!(sym, BType(_) | TypeAlias(_));
+            if is_type {
+                let owner = types::parse_path(token, syms, it)?;
+
+                let err = format!(
+                    "`{}` is a type, not a value; use `{}.function(...)`",
+                    owner.to_string(),
+                    owner.to_string()
+                );
+                let Some(Common(dot)) = it.next() else {
+                    return Err(err);
+                };
+                if dot.kind != Dot {
+                    return Err(err);
+                }
+                let Some(Common(member)) = it.next() else {
+                    return Err(err);
+                };
+                let Identifier(member_id) = &member.kind else {
+                    return Err(err);
+                };
+
+                return extended_call(&owner, None, member_id, syms, it);
+            }
 
             let is_call = match sym {
                 Variable(_, _, func) => *func,
@@ -536,7 +747,6 @@ fn parse_call(
             _ => return Err(err),
         }
     }
-    // TODO: validar contagem e tipos de `args` contra o Vec<Arg> da função
     Ok(Expr::Call(id.to_string(), args, ret))
 }
 
@@ -546,6 +756,7 @@ pub fn work(
     iterator: &mut ContextIterator<'_>,
 ) -> Result<Node, String> {
     let lhs = parse_prefix(token, syms, iterator)?;
+    let lhs = parse_postfix(lhs, syms, iterator)?;
     let expr = climb(lhs, 0, syms, iterator)?;
 
     let compiled = if expr.is_const() {

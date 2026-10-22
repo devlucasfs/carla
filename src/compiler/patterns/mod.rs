@@ -5,7 +5,7 @@ use crate::{
         iterator::ContextIterator,
         node::Node,
         scanner::{
-            Keywords::{Defer, Extern, Fn, Let, Unfold, Using},
+            Keywords::{Defer, Extend, Extern, Fn, Let, Unfold, Using},
             Token,
             TokenKind::Keyword,
         },
@@ -17,6 +17,7 @@ use crate::{
 pub mod declaration;
 pub mod defer;
 pub mod expressions;
+pub mod extend;
 pub mod r#extern;
 pub mod lambda;
 pub mod types;
@@ -75,6 +76,15 @@ pub fn handler(
                 errors,
                 "Declaration parser",
                 declaration::work(token, syms, iterator)
+            );
+        }
+
+        Keyword(Extend) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "Extensions parser",
+                extend::work(token, syms, iterator)
             );
         }
 
