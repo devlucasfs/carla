@@ -10,8 +10,8 @@ use crate::{
         PBB::{Brace, Bracket, Paren},
         TokenKind::{
             And, Arrow, Bang, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, Dot, Float,
-            Hexa, Identifier, Integer, Keyword, MathOperator, Nil, Octal, Open, Or, Semi, Sign,
-            Walrus, Wild,
+            Hexa, Identifier, Integer, Keyword, MathOperator, Nil, Octal, Open, Or, RunaString,
+            Semi, Sign, Walrus, Wild,
         },
     },
     utils::compiler_outputs::CompilerOutputs,
@@ -82,6 +82,7 @@ pub enum PBB {
 pub enum TokenKind {
     BinaryOperator(BinOP),
     MathOperator(MathOp),
+    RunaString(String),
     Identifier(String),
     BitOperator(BitOp),
     Keyword(Keywords),
@@ -196,7 +197,10 @@ impl Scanner {
 
             match ch {
                 // FAZER O DEC E O INC
-                b'-' if second == b'-' && self.tokens.last().unwrap_or(SEMI_TOKEN).kind == Semi => {
+                b'-' if second == b'-'
+                    && [Semi, Open(Brace), Comma]
+                        .contains(&self.tokens.last().unwrap_or(SEMI_TOKEN).kind) =>
+                {
                     for j in (i + 2)..self.bytes.len() {
                         if self.bytes[j] == b'\n' {
                             i = j;
@@ -320,18 +324,60 @@ impl Scanner {
 
                 b'"' => {
                     i += 1;
-                    let mut last: u8 = 0;
                     let mut string = String::new();
-                    while (self.bytes[i] != b'"' && last != b'\\') || self.bytes[i] == b'\n' {
-                        last = self.bytes[i];
-                        string.push(char::from(self.bytes[i]));
-                        i += 1;
+                    let unterminated = "Unterminated string literal";
 
-                        if last == b'\n' {
-                            CompilerOutputs::fatal(
-                                "You can't to have a string with more than one Literal line",
-                            );
+                    loop {
+                        let Some(&c) = self.bytes.get(i) else {
+                            CompilerOutputs::fatal(unterminated);
+                            unreachable!();
+                        };
+
+                        match c {
+                            b'"' => break,
+                            b'\n' => {
+                                CompilerOutputs::fatal(
+                                    "You can't to have a string with more than one Literal line",
+                                );
+                            }
+                            b'\\' => {
+                                i += 1;
+                                let Some(&e) = self.bytes.get(i) else {
+                                    CompilerOutputs::fatal(unterminated);
+                                    unreachable!();
+                                };
+
+                                let byte = match e {
+                                    b'n' => b'\n',
+                                    b'r' => b'\r',
+                                    b't' => b'\t',
+                                    b'0' => 0,
+                                    b'\\' => b'\\',
+                                    b'"' => b'"',
+                                    b'x' => {
+                                        let hi = self.bytes.get(i + 1).and_then(|b| (*b as char).to_digit(16));
+                                        let lo = self.bytes.get(i + 2).and_then(|b| (*b as char).to_digit(16));
+                                        let (Some(hi), Some(lo)) = (hi, lo) else {
+                                            CompilerOutputs::fatal("Expected two hex digits after \\x");
+                                            unreachable!();
+                                        };
+                                        i += 2;
+                                        (hi * 16 + lo) as u8
+                                    }
+                                    other => {
+                                        CompilerOutputs::fatal(format!(
+                                            "Unknown escape sequence '\\{}'",
+                                            char::from(other)
+                                        ));
+                                        unreachable!();
+                                    }
+                                };
+                                string.push(char::from(byte));
+                            }
+                            _ => string.push(char::from(c)),
                         }
+
+                        i += 1;
                     }
 
                     self.push(TokenKind::String(string));
@@ -399,6 +445,53 @@ impl Scanner {
                     "false" => self.push(Bool(false)),
                     "true" => self.push(Bool(true)),
                     "nil" => self.push(Nil),
+                    "runa" if self.bytes.get(i) == Some(&b':') => {
+                        i += 1;
+                        while i < self.bytes.len() && matches!(self.bytes[i], b' ' | b'\t') {
+                            i += 1;
+                        }
+
+                        if i < self.bytes.len() && self.bytes[i] == b'(' {
+                            i += 1;
+                        }
+
+                        let mut depth = 1usize;
+                        let mut in_string = false;
+                        let mut content: Vec<u8> = Vec::new();
+
+                        loop {
+                            if i >= self.bytes.len() {
+                                CompilerOutputs::fatal("Unterminated runa block: expected ')'");
+                                break;
+                            }
+
+                            let b = self.bytes[i];
+
+                            if b == b'\n' {
+                                self.line += 1;
+                            }
+
+                            if b == b'"' && (i == 0 || self.bytes[i - 1] != b'\\') {
+                                in_string = !in_string;
+                            } else if !in_string {
+                                if b == b'(' {
+                                    depth += 1;
+                                } else if b == b')' {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            content.push(b);
+                            i += 1;
+                        }
+
+                        let code = String::from_utf8_lossy(&content).trim().to_string();
+                        self.push(RunaString(code));
+                        continue;
+                    }
                     _ => self.push(Identifier(identifier)),
                 }
 

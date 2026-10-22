@@ -5,6 +5,7 @@ pub mod commands;
 pub mod compiler;
 pub mod morgana;
 pub mod utils;
+pub mod cbinds;
 
 fn main() {
     /* Collect and format all data */

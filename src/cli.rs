@@ -5,6 +5,8 @@ use std::env;
 pub struct BRData {
     pub main: String,
     pub format: String,
+    pub constexpr: String,
+    pub builds: Vec<Build>
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -35,6 +37,18 @@ impl Default for FatalCLIMessage {
 pub struct CLI {
     pub message: FatalCLIMessage,
     pub command: Command,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BuildPattern {
+    pub arch: String,
+    pub os: String
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Build {
+    Pattern(BuildPattern),
+    Auto,
 }
 
 impl CLI {
@@ -77,6 +91,12 @@ impl CLI {
                     );
                 };
 
+                let EvaValue::String(constexpr) = eva.get("target", "constexpr") else {
+                    return CLI::spawn_error(
+                        "The `constexpr` field in the target.eva file need to be a string.",
+                    );
+                };
+
                 let EvaValue::Map(output) = eva.get("target", "output") else {
                     return CLI::spawn_error(
                         "The `output` field in the target.eva file need to be a map.",
@@ -89,7 +109,40 @@ impl CLI {
                     );
                 };
 
+                let EvaValue::List(builds) = eva.get("target", "builds") else {
+                    return CLI::spawn_error(
+                        "The `builds` field in the target.eva file need to be a list.",
+                    );
+                };
+
+                let mut patterns = vec![];
+                for i in 0..builds.len() {
+                    match builds.get(i) {
+                        EvaValue::String(s) if s.to_lowercase() == "auto" => patterns.push(Build::Auto),
+                        EvaValue::Map(map) => {
+                            let EvaValue::String(os) = map.get("os") else {
+                                return CLI::spawn_error(
+                                    "The `os` field in the build pattern map need to be a string.",
+                                );
+                            };
+
+                            let EvaValue::String(arch) = map.get("arch") else {
+                                return CLI::spawn_error(
+                                    "The `arch` field in the build pattern map need to be a string.",
+                                );
+                            };
+
+                            patterns.push(Build::Pattern(BuildPattern { arch, os }));
+                        }
+                        _ => return CLI::spawn_error(
+                            &format!("the {}th argument its invalid.", i+1)
+                        )
+                    }
+                }
+
                 let data = BRData {
+                    builds: patterns,
+                    constexpr: constexpr,
                     format: format,
                     main: main,
                 };

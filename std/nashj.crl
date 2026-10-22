@@ -1,0 +1,346 @@
+-- nashj.crl -- Carla binding of the Nashj (نشج) allocator.
+--
+-- Author:  contato.lucasdwbfff@gmail.com
+--
+-- This file is part of mclibc.
+--
+-- mclibc is a MINIMAL package of functions that ships bundled with
+-- Carla, the programming language.  Everything in mclibc is written to
+-- be tiny, dependency free (no libc, no malloc) and easy to audit.
+--
+-- Nashj (نشج) is the Arabic word for "weaving".  The allocator weaves
+-- live allocations, free ranges and their bookkeeping into one single
+-- region of memory, and `coalesce' re-weaves it without gaps.
+--
+-- ---------------------------------------------------------------------
+-- WHAT THIS FILE IS
+-- ---------------------------------------------------------------------
+--
+-- The allocator itself is written in C (`nashj.h' and `nashj.c').  This
+-- file does NOT reimplement it.  It does two things only:
+--
+--   1. It declares, with `extern', the C functions that Carla needs,
+--      using the exact symbol names that the C side exports
+--      (`nashj_start', `nashj_alloc', and so on).
+--   2. It wraps them in an object-oriented facade, through
+--      `extend Nashj', so that Carla code can write `n.alloc (64)'
+--      instead of `nashj_alloc (&n, 64)'.
+--
+-- Because the facade is a thin layer, every rule of the C allocator
+-- still holds here.  When in doubt, `nashj.c' is the reference.
+--
+-- ---------------------------------------------------------------------
+-- DESIGN OVERVIEW (shared with the C implementation)
+-- ---------------------------------------------------------------------
+--
+-- * Zero per-block headers.  A live allocation is described only by a
+--   NODE (an address and a size) that lives in a separate bookkeeping
+--   chunk.  The capacity asked from `start' is therefore 100% usable
+--   for user data.
+--
+-- * Two independent memory domains:
+--
+--     DATA REGION   one contiguous mapping with exactly `capacity'
+--                   bytes.  It holds user data and nothing else.
+--     BOOKKEEPING   a chain of chunks, newest first, that hold the
+--                   nodes and the refs.  They are mapped on demand and
+--                   NEVER subtract from the data capacity.
+--
+--       low addresses                                  high addresses
+--       +--------------------------+-------------------------------+
+--       | user data  ->            |          (free room)          |
+--       +--------------------------+-------------------------------+
+--       ^ mem                      ^ mem+offset                    ^ mem+capacity
+--
+-- * Three singly linked lists of nodes:
+--
+--     used_list   live allocations.  Freeing looks the address up here.
+--     free_list   freed ranges, sorted by address and merged with their
+--                 neighbours whenever they touch.
+--     spare       dead nodes kept for reuse, so that the number of nodes
+--                 is bounded by the PEAK number of simultaneous
+--                 allocations, not by the total history.
+--
+-- * Refs are never recycled while the nashj lives.  A ref is the small
+--   handle returned by `alloc'.  It stores the current address and a
+--   `freed' flag, and it must keep answering "this was freed" even
+--   after the free.  Each `alloc' therefore consumes one ref until
+--   `reset' or `destroy'.
+--
+-- * Every byte returned by `alloc' is zero-filled, wherever it comes
+--   from (fresh pages, a reused free range, or space recovered by
+--   lowering `offset').
+--
+-- * Handles survive `coalesce' (their address is rewritten).  Raw
+--   addresses obtained from `makeraw' do not.
+--
+-- * Alignment.  Every allocation is rounded up to a multiple of 16
+--   bytes (NASHJ_ALIGN in the C header), so every address is 16 byte
+--   aligned.
+--
+-- * Errors.  Runtime errors (zero size, out of memory, double free, a
+--   foreign handle, and so on) are reported by the C side through
+--   `runtime_error (nashj)'.  After reporting, the C function returns
+--   a safe value (NULL, or nothing) and leaves the nashj untouched.
+--   The Carla side adds no error handling of its own.
+--
+-- ---------------------------------------------------------------------
+-- CODE CONVENTIONS
+-- ---------------------------------------------------------------------
+--
+-- This file follows the same rules as the rest of "stdlibcore".  The
+-- ones that can be observed here are:
+--
+--   1. Comments follow the GNU style: full sentences, two spaces after
+--      a period, and a blank comment line between paragraphs.
+--   2. Every public symbol of the C side is declared once, with
+--      `extern', in the section below, and nowhere else.
+--   3. The object facade lives inside ONE `extend' block per type, and
+--      only contains `using' and `fn' declarations.
+--   4. Methods are named after the C function without the prefix
+--      (`nashj_alloc' becomes `alloc'), except where Carla needs a
+--      conventional name (`init' and `deinit' for `start' and
+--      `destroy').  */
+
+
+-- =====================================================================
+-- THE STATE TYPE
+-- =====================================================================
+
+-- Nashj: the state of one allocator.
+--
+-- This is a tuple type whose fields MUST match, in the same order and
+-- with the same sizes, the C struct `nashj_t' of `nashj.h'.  The C
+-- functions read and write it directly, so any mismatch is memory
+-- corruption.  The fields are anonymous here because Carla code never
+-- touches them: the only way to use a nashj is through its functions.
+--
+-- The struct is small.  `start' returns it BY VALUE and every other
+-- function receives a pointer to it.  A zero-filled Nashj is a valid,
+-- empty allocator that owns no memory, so every `alloc' on it fails.
+--
+-- Field by field, in order:
+--
+--   generic_ptr  mem        base of the data region.
+--   uint         capacity   size of the data region, in bytes: the most
+--                           user data it can hold.
+--   uint         offset     top of the data area.  It grows upwards, and
+--                           everything below it has been handed out at
+--                           least once.
+--   generic_ptr  tab        newest bookkeeping chunk, or NULL.
+--   uint         tab_used   bytes used in that chunk, header included.
+--   generic_ptr  free_list  freed ranges, sorted by address.
+--   generic_ptr  used_list  live allocations.
+--   generic_ptr  spare      recycled nodes ready for reuse.  */
+
+using Nashj = |generic_ptr,   -- mem
+               uint,          -- capacity
+               uint,          -- offset
+               generic_ptr,   -- tab
+               uint,          -- tab_used
+               generic_ptr,   -- free_list
+               generic_ptr,   -- used_list
+               generic_ptr|;  -- spare
+
+
+-- =====================================================================
+-- RAW INTERFACE TO THE C ALLOCATOR
+-- =====================================================================
+--
+-- These declarations give Carla the C functions, with the same names
+-- that `nashj.h' exports.  A parameter of type `Nashj*' receives the
+-- ADDRESS of the allocator, which is what the C side expects as
+-- `nashj_t *'.  A `generic_ptr' that stands for a handle is a pointer to
+-- the C struct `nashj_ref' (see `Qitah' below).  Contracts are
+-- documented in full in `nashj.c'.
+
+-- Create a nashj with `size' bytes of data, obtained from the operating
+-- system as anonymous, zero-filled, read/write memory.
+--
+-- The bookkeeping is extra and never counts against `size', so `size'
+-- is exactly the data capacity.  If the system refuses the request, a
+-- runtime error is emitted and the returned nashj has capacity zero, so
+-- every later `alloc' fails safely and the caller needs no special
+-- handling.  The caller owns the result and must eventually pass it to
+-- `nashj_destroy'.
+extern Nashj nashj_start = fn(uint size);
+
+-- Allocate `size' bytes, all set to zero, and return a REF handle.
+--
+-- The size is rounded up to the next multiple of 16, so every address
+-- is 16 byte aligned.  The strategy is:
+--
+--   1. First fit over the free list.  A perfect fit is promoted to a
+--      live allocation as it is.  A larger range is split: its front
+--      becomes the allocation and the free range shrinks.
+--   2. Otherwise, advance `offset', provided the data area has room.
+--
+-- On success the result is never NULL.  On any failure (zero size, a
+-- size that overflows when rounded, no room left in the data area, or
+-- the system refusing memory for the bookkeeping) a runtime error is
+-- emitted and NULL is returned, with the nashj left exactly as it was.
+--
+-- The result is a handle, not an address.  Use `nashj_makeraw' (or
+-- `to_raw', below) to get the plain address.
+extern generic_ptr nashj_alloc = fn(Nashj* addr, uint size);
+
+-- Free the allocation described by the handle `mem'.
+--
+-- The allocation is looked up in the used list by ADDRESS, and the
+-- matching node supplies the size, which is why the caller never passes
+-- one.  The handle is marked as freed, the range is inserted in the
+-- free list (kept sorted) and merged with any adjacent free ranges.  If
+-- the resulting range touches the top of the data area, `offset' is
+-- lowered and the space goes back to the untouched region.
+--
+-- A NULL handle is ignored, like `free (NULL)'.  A double free or a
+-- handle that does not belong to this nashj emits a runtime error and
+-- leaves the nashj unchanged.
+--
+-- NOTE: the parameter is named `mem' for historical reasons, but it
+-- receives the HANDLE returned by `nashj_alloc', not a raw address.
+extern void nashj_dump = fn(Nashj* addr, generic_ptr mem);
+
+-- Compact the data region: slide every live allocation down so that
+-- the gaps left by `nashj_dump' disappear.
+--
+--     memory: |xxxxxx|....|xxxxxxx|.........|
+--     result: |xxxxxx|xxxxxxx|.............|
+--
+-- Every surviving handle is rewritten to its new address.  Any raw
+-- pointer obtained before through `makeraw' becomes DANGLING and must
+-- be fetched again.  Afterwards the free list is empty and `offset' is
+-- lowered by the total size of the gaps.
+--
+-- The C function returns an `int': 0 on success (including a nashj with
+-- no gaps), or -1, after a runtime error, if the temporary copy cannot
+-- be obtained, in which case nothing was moved.
+--
+-- NOTE: the declaration below says `void', so Carla code cannot read
+-- that status.  The call itself is correct, but a failure is only
+-- visible through the runtime error.  Declare it as `int' if the
+-- status is needed.
+extern void nashj_coalesce = fn(Nashj* addr);
+
+-- Return the whole nashj to the operating system: the data region and
+-- every bookkeeping chunk.
+--
+-- After this call the nashj is left in a safe, empty state (capacity
+-- zero, no memory), so a repeated `destroy' or a later `alloc' is
+-- harmless.  Every pointer and every handle obtained from it is
+-- invalid.  If the system refuses to take the memory back, a runtime
+-- error is emitted, but the nashj is cleared anyway.
+extern void nashj_destroy = fn(Nashj* addr);
+
+-- Return the plain address stored in a handle.
+--
+-- Returns NULL, after a runtime error, if the handle is NULL or if the
+-- allocation has already been freed, so a stale handle can never be
+-- used by mistake.  The address stays valid until the next
+-- `coalesce', `reset' or `destroy', or until the block is freed.
+--
+-- NOTE: this one takes the handle itself (a pointer to the C ref), not
+-- a pointer to a handle.  See `Qitah.to_raw' for the Carla side.
+extern byte* nashj_makeraw = fn(generic_ptr ref);
+
+
+-- =====================================================================
+-- OBJECT ORIENTED FACADE
+-- =====================================================================
+--
+-- Inside an `extend' block, a function whose first parameter is `self'
+-- is called with the dot syntax, and `self' is ALWAYS received as a
+-- POINTER to the object, never as a copy: `n.alloc (8)' passes `&n'.
+-- That is exactly what the C functions expect, so the methods below
+-- forward `self' as it is.
+--
+-- Functions without `self' (such as `init') are called through the
+-- type, as in `Nashj.init (1024)'.
+
+extend Nashj {
+
+    -- Qitah (قطعة, "piece"): the handle type returned by `alloc'.
+    --
+    -- It is a pointer to the C struct `nashj_ref', which holds the
+    -- current address of the allocation and a `freed' flag.  A Qitah
+    -- stays valid for the whole life of the nashj that produced it.
+    -- Only `reset' and `destroy' invalidate it, and freeing the block
+    -- (`dump') marks it as freed, which later calls detect and report.
+    --
+    -- Prefer a Qitah over a raw pointer whenever the block may live
+    -- across a `coalesce', because the Qitah is updated and the raw
+    -- pointer is not.
+    using Qitah = generic_ptr;
+
+    -- Construct a fresh nashj with `size' bytes of data capacity.
+    --
+    -- This is `nashj_start'.  It returns the nashj by value, so the
+    -- variable that receives it owns the memory and must call `deinit'
+    -- when it is done.  On failure the result has capacity zero.
+    Nashj init = fn(uint size) -> nashj_start(size);
+
+    -- Allocate a zero-filled block of `size' bytes and return its
+    -- handle.
+    --
+    -- The size is normalised to a multiple of 16 (NASHJ_ALIGN) before
+    -- the request is satisfied.  The cast to `Nashj.Qitah' only gives
+    -- the generic pointer its proper handle type; it changes no bits.
+    -- Returns NULL, after a runtime error, on failure.
+    Nashj.Qitah alloc = fn(self, uint size) -> nashj_alloc(self, size) as Nashj.Qitah;
+
+    -- Release the allocation owned by `qitah'.
+    --
+    -- It is safe against a double free and against handles that do not
+    -- belong to this instance: both emit a runtime error and change
+    -- nothing.  A NULL handle is ignored.
+    void dump = fn(self, Nashj.Qitah qitah) -> nashj_dump(self, qitah);
+
+    -- Compact the data region, closing every fragmentation gap.
+    --
+    -- After this call, any raw pointer that was materialised with
+    -- `to_raw' is invalid.  Handles remain usable.
+    void coalesce = fn(self) -> nashj_coalesce(self);
+
+    -- Tear the allocator down and return all the mapped memory to the
+    -- operating system.  The nashj must not be used afterwards, except
+    -- for a harmless second `deinit'.
+    void deinit = fn(self) -> nashj_destroy(self);
+
+    -- Convenience: free one handle and compact right away.
+    --
+    -- Useful when the caller needs the reclaimed space to be available
+    -- to the next allocations without waiting for a later, global
+    -- compaction.
+    --
+    -- This is a linear walk over the data, so it is much more
+    -- expensive than a plain `dump'.  Call `dump' in a loop and a
+    -- single `coalesce' at the end when many blocks go away together.
+    -- As with `coalesce', raw pointers are invalid afterwards.
+    void flush = fn(self, Nashj.Qitah qitah) {
+        nashj_dump(self, qitah);
+        nashj_coalesce(self)
+    }
+}
+
+extend Nashj.Qitah {
+    -- Methods of the handle type.
+    --
+    -- These live in their own `extend' block because they belong to
+    -- `Nashj.Qitah' and not to the allocator.
+
+    -- Return the plain address of the block, as a `byte*'.
+    --
+    -- `self' arrives as a POINTER to the handle (see the rule above),
+    -- that is, a pointer to a pointer to the C ref.  The first line
+    -- reinterprets it with its real type, and `ptr.*' dereferences it
+    -- once to obtain the handle itself, which is what `nashj_makeraw'
+    -- expects.
+    --
+    -- Returns NULL, after a runtime error, if the handle is NULL or has
+    -- already been freed.  The address is invalidated by `coalesce',
+    -- `reset' and `destroy'.
+    byte* to_raw = fn(self) {
+        let ptr := self as Nashj.Qitah*;
+        nashj_makeraw(ptr.*)
+    }
+}

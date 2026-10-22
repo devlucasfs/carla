@@ -9,7 +9,7 @@ use crate::{
         patterns::types::{self, Base, CarlaType},
         scanner::{
             BitOp::AND,
-            Keywords::As,
+            Keywords::{As, Syscall},
             MathOp::{self, Minus},
             PBB::Paren,
             Token,
@@ -23,12 +23,15 @@ use crate::{
             Symbols,
         },
     },
-    morgana::MorganaType::{self, Ptr},
+    morgana::MorganaType,
 };
 
 const DEFAULT_INT: &str = "int";
 const DEFAULT_BOOL: &str = "bool";
 const DEFAULT_STR_BASE: &str = "byte";
+/// Tipo de retorno de uma syscall (palavra de máquina em rax).
+/// Troque pelo tipo de 64 bits registrado em Symbols.
+const DEFAULT_SYSCALL_RET: &str = "int";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UnOp {
@@ -55,10 +58,12 @@ pub enum Expr {
     Var(String, CarlaType),
     Pointer(String, CarlaType),
     Call(String, Vec<Expr>, CarlaType),
+    Syscall(u64, Vec<Expr>, CarlaType),
     Unary(UnOp, Box<Expr>, CarlaType),
     Binary(BinOp, Box<Expr>, Box<Expr>, CarlaType),
-    /// `value as Type`: the CarlaType is the target type.
     Cast(Box<Expr>, CarlaType),
+    /// `ptr.*`: reads the value a pointer points to (the CarlaType is the pointee type)
+    Deref(Box<Expr>, CarlaType),
 }
 
 impl Expr {
@@ -71,9 +76,11 @@ impl Expr {
             | Expr::Var(_, t)
             | Expr::Pointer(_, t)
             | Expr::Call(_, _, t)
+            | Expr::Syscall(_, _, t)
             | Expr::Unary(_, _, t)
             | Expr::Binary(_, _, _, t)
-            | Expr::Cast(_, t) => t.clone(),
+            | Expr::Cast(_, t)
+            | Expr::Deref(_, t) => t.clone(),
         }
     }
 
@@ -124,7 +131,9 @@ pub enum StepOp {
     Unary(UnOp, Operand),
     Binary(BinOp, Operand, Operand),
     Call(String, Vec<Operand>),
+    Syscall(u64, Vec<Operand>),
     Cast(Operand, CarlaType),
+    Deref(Operand),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -200,9 +209,17 @@ fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
             let a = args.iter().map(|x| lower(x, out)).collect();
             emit(out, t, StepOp::Call(n.clone(), a))
         }
+        Expr::Syscall(n, args, t) => {
+            let a = args.iter().map(|x| lower(x, out)).collect();
+            emit(out, t, StepOp::Syscall(*n, a))
+        }
         Expr::Cast(x, t) => {
             let a = lower(x, out);
             emit(out, t, StepOp::Cast(a, x.ty()))
+        }
+        Expr::Deref(x, t) => {
+            let a = lower(x, out);
+            emit(out, t, StepOp::Deref(a))
         }
         lit => Operand::Const(lit.clone()),
     }
@@ -354,10 +371,6 @@ fn fold_binary(op: BinOp, l: &Expr, r: &Expr, ty: &CarlaType) -> Result<Option<E
     Ok(Some(Expr::Integer(v, ty.clone())))
 }
 
-// ---------------------------------------------------------------------------
-// `as` (cast)
-// ---------------------------------------------------------------------------
-
 fn is_ptr(t: &CarlaType) -> bool {
     t.levels > 0
         || match &t.base {
@@ -377,7 +390,6 @@ fn is_int_ty(t: &CarlaType) -> bool {
     !is_ptr(t) && morgana_of(t).map_or(false, |m| is_int(&m))
 }
 
-/// 64-bit integer: the only integer that can be converted from/to a pointer.
 fn is_word(t: &CarlaType) -> bool {
     !is_ptr(t)
         && matches!(
@@ -386,13 +398,10 @@ fn is_word(t: &CarlaType) -> bool {
         )
 }
 
-/// Checks that `x` can be converted to `to` and builds the cast.
-/// Constant integers/booleans are converted at compile time (and must fit).
 fn make_cast(x: Expr, to: CarlaType) -> Result<Expr, String> {
     let from = x.ty();
     let (fs, ts) = (from.to_string(), to.to_string());
 
-    // same type: nothing to do
     if fs == ts {
         return Ok(x);
     }
@@ -426,14 +435,41 @@ fn make_cast(x: Expr, to: CarlaType) -> Result<Expr, String> {
     Ok(Expr::Cast(Box::new(x), to))
 }
 
-// ---------------------------------------------------------------------------
-// Parsing
-// ---------------------------------------------------------------------------
+/// `ptr.*`: the result has the pointee type (one `*` less).
+fn make_deref(x: Expr) -> Result<Expr, String> {
+    let ty = x.ty();
+
+    if ty.levels == 0 {
+        return Err(if is_ptr(&ty) {
+            format!(
+                "cannot dereference `{}`: it is an untyped pointer (cast it first, e.g. `as T*`)",
+                ty.to_string()
+            )
+        } else {
+            format!("cannot dereference `{}`: it is not a pointer", ty.to_string())
+        });
+    }
+
+    let mut pointee = ty.clone();
+    pointee.levels -= 1;
+
+    // `nil` and other untyped pointers (`|_|*`): there is no value to read
+    if pointee.levels == 0 && pointee.base.is_none() && pointee.tuple.is_empty() {
+        return Err("cannot dereference an untyped pointer (cast it first, e.g. `as T*`)".into());
+    }
+
+    if pointee.levels == 0 && !pointee.dim.is_empty() {
+        return Err("dereferencing a pointer to an array isn't supported yet".into());
+    }
+
+    Ok(Expr::Deref(Box::new(x), pointee))
+}
 
 pub fn starts_with(kind: &TokenKind) -> bool {
     matches!(
         kind,
         Identifier(_)
+            | Keyword(Syscall)
             | Bool(_)
             | TokenKind::BitOperator(AND)
             | Integer(_)
@@ -490,8 +526,6 @@ fn binop_of(k: &TokenKind) -> Option<(BinOp, u8, u8)> {
     })
 }
 
-/// `as` binds tighter than `* / %` and looser than prefix operators:
-/// `-x as u8` is `(-x) as u8`, and `a * b as T` is `a * (b as T)`.
 const AS_BP: u8 = 9;
 const PREFIX_BP: u8 = 11;
 
@@ -526,7 +560,6 @@ fn climb(
     loop {
         let Some(Common(tk)) = it.peek() else { break };
 
-        // `<expr> as <type>`
         if tk.kind == Keyword(As) {
             if AS_BP < min_bp {
                 break;
@@ -555,10 +588,10 @@ fn climb(
     Ok(lhs)
 }
 
-/// Postfix `.`: `value.function(args)` becomes `function(value, args)`,
-/// where `function` is an extended function of the value's type.
-/// It binds tighter than any prefix/binary operator.
-fn parse_postfix(
+/// Postfix `.`:
+///   `value.*`              reads the value behind a pointer
+///   `value.function(args)` calls an extended function, passing `&value` as `self`
+pub fn parse_postfix(
     mut lhs: Expr,
     syms: &mut Symbols,
     it: &mut ContextIterator<'_>,
@@ -569,7 +602,16 @@ fn parse_postfix(
         }
         it.next();
 
-        let err = "Expected a function name after '.'";
+        // `.*`: dereference
+        if let Some(Common(star)) = it.peek() {
+            if star.kind == MathOperator(MathOp::Star) {
+                it.next();
+                lhs = make_deref(lhs)?;
+                continue;
+            }
+        }
+
+        let err = "Expected a function name or `*` after '.'";
         let Some(Common(member)) = it.next() else {
             return Err(err.into());
         };
@@ -594,9 +636,6 @@ fn self_ref(receiver: Expr) -> Result<Expr, String> {
     }
 }
 
-/// Resolves `owner.member(...)` to the ABI symbol of an extended function.
-/// `receiver` is the value on the left of the `.` (None for `Type.member(...)`),
-/// and is passed as the first argument (the `self`).
 fn extended_call(
     owner: &CarlaType,
     receiver: Option<Expr>,
@@ -638,6 +677,8 @@ fn parse_prefix(
     it: &mut ContextIterator<'_>,
 ) -> Result<Expr, String> {
     match &token.kind {
+        Keyword(Syscall) => parse_syscall(syms, it),
+
         MathOperator(Minus) => make_unary(UnOp::Neg, parse_expr(PREFIX_BP, syms, it)?),
         Bang => make_unary(UnOp::Not, parse_expr(PREFIX_BP, syms, it)?),
 
@@ -673,8 +714,6 @@ fn parse_prefix(
                 return Err(format!("simbolo n existente : '{id}'"));
             };
 
-            // The identifier is a type (InternalType): the `.` that follows
-            // refers to an extended function of that type, e.g. `Abcd.new(1)`.
             let is_type = matches!(sym, BType(_) | TypeAlias(_));
             if is_type {
                 let owner = types::parse_path(token, syms, it)?;
@@ -723,12 +762,11 @@ fn parse_prefix(
     }
 }
 
-fn parse_call(
+fn parse_args(
     id: &str,
-    ret: CarlaType,
     syms: &mut Symbols,
     it: &mut ContextIterator<'_>,
-) -> Result<Expr, String> {
+) -> Result<Vec<Expr>, String> {
     let err = format!("Invalid {id} call");
     let Some(Block(pbb, ctx)) = it.next() else {
         return Err(err);
@@ -747,7 +785,32 @@ fn parse_call(
             _ => return Err(err),
         }
     }
+    Ok(args)
+}
+
+pub fn parse_call(
+    id: &str,
+    ret: CarlaType,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Expr, String> {
+    let args = parse_args(id, syms, it)?;
     Ok(Expr::Call(id.to_string(), args, ret))
+}
+
+fn parse_syscall(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<Expr, String> {
+    let err = "Expected a hexadecimal syscall number after `syscall` (e.g. `syscall 0x01(...)`)";
+    let Some(Common(tk)) = it.next() else {
+        return Err(err.into());
+    };
+    let Hexa(n) = &tk.kind else {
+        return Err(err.into());
+    };
+    let n = u64::try_from(*n).map_err(|_| format!("invalid syscall number: {n}"))?;
+
+    let args = parse_args(&format!("syscall {n:#x}"), syms, it)?;
+    let ret = builtin(syms, DEFAULT_SYSCALL_RET)?;
+    Ok(Expr::Syscall(n, args, ret))
 }
 
 pub fn work(

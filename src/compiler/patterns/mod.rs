@@ -5,7 +5,7 @@ use crate::{
         iterator::ContextIterator,
         node::Node,
         scanner::{
-            Keywords::{Defer, Extend, Extern, Fn, Let, Unfold, Using},
+            Keywords::{Constexpr, Defer, Extend, Extern, Fn, Let, Unfold, Using},
             Token,
             TokenKind::Keyword,
         },
@@ -14,6 +14,7 @@ use crate::{
     utils::compiler_outputs::CompilerOutputs,
 };
 
+pub mod constexpr;
 pub mod declaration;
 pub mod defer;
 pub mod expressions;
@@ -70,6 +71,15 @@ pub fn handler(
     }
 
     match token.kind {
+        Keyword(Constexpr) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "Constexpr parser",
+                constexpr::work(token, syms, iterator)
+            );
+        }
+
         Keyword(Let) => {
             try_pattern!(
                 iterator,

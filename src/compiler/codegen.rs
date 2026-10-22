@@ -1,7 +1,8 @@
 use crate::{
     compiler::{
         node::Node::{
-            self, Declaration, Declare, Expression, Extension, Function, Nop, STMTDefer, Unfoldable,
+            self, Declaration, Declare, Expression, Extension, Function, Nop, STMTDefer,
+            Unfoldable,
         },
         patterns::{
             expressions::{Compiled, Expr, Operand, Step, StepOp},
@@ -27,9 +28,37 @@ use crate::{
 pub struct Codegen {
     pub nodes: Vec<Node>,
     pub code: String,
-    /// Type of the `extend` block being generated (None outside of one).
-    /// Functions declared with `self` get a pointer to this type as first parameter.
     pub extending: Option<CarlaType>,
+}
+
+#[allow(unreachable_patterns)]
+fn ir_type(t: &MorganaType) -> String {
+    match t {
+        MorganaType::Integer(b) => format!("i{b}"),
+        MorganaType::UInteger(b) => format!("u{b}"),
+        MorganaType::Ptr => "ptr".into(),
+        MorganaType::Void => "void".into(),
+        MorganaType::Tuple(items) => format!(
+            "{{ {} }}",
+            items.iter().map(ir_type).collect::<Vec<_>>().join(", ")
+        ),
+        other => format!("{other:?}"),
+    }
+}
+
+fn encode_literal(s: &str) -> String {
+    let bytes: Vec<u8> = if s.chars().all(|c| (c as u32) <= 0xFF) {
+        s.chars().map(|c| c as u8).collect()
+    } else {
+        s.as_bytes().to_vec()
+    };
+
+    let mut out = String::with_capacity(1 + bytes.len() * 2);
+    out.push('h');
+    for b in bytes {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
 }
 
 impl<'a> MorganaExpr<'a> {
@@ -79,6 +108,19 @@ impl<'a> MorganaExpr<'a> {
                 (t, ty.pointer_to())
             }
 
+            StepOp::Syscall(number, args) => {
+                let mut parts = vec![number.to_string()];
+                for a in args {
+                    let (v, _) = self.value(a)?;
+                    parts.push(v);
+                }
+
+                let t = self.fresh();
+                self.line(format!("{t} = syscall {}", parts.join(", ")));
+
+                (t, s.ty.clone())
+            }
+
             StepOp::Cast(op, from) => {
                 let (v, _) = self.value(op)?;
 
@@ -91,6 +133,14 @@ impl<'a> MorganaExpr<'a> {
                 }
 
                 (v, s.ty.clone())
+            }
+
+            StepOp::Deref(op) => {
+                let (p, _) = self.value(op)?;
+                let t = self.fresh();
+                self.line(format!("{t} = deref {} {p}", ir_type(&s.ty.to_morgana())));
+
+                (t, s.ty.clone())
             }
 
             _ => todo!(),
@@ -107,6 +157,11 @@ impl<'a> MorganaExpr<'a> {
                 // Expr::Float(f, ty) => (format!("0x{:016X}", f.to_bits()), ty),
                 Expr::Boolean(b, ty) => ((if *b { "255" } else { "0" }).into(), ty.clone()),
                 Expr::Nil => ("0".into(), CarlaType::from_basic("generic_ptr")),
+                Expr::String(s, ty) => {
+                    let t = self.fresh();
+                    self.line(format!("{t} = str {}", encode_literal(s)));
+                    (t, ty.clone())
+                }
                 _ => return Err("constante não suportada no emissor (ex.: string)".into()),
             }),
 
@@ -184,6 +239,8 @@ impl Codegen {
 
                     self.nodes.remove(0);
 
+                    // `self` is always the first parameter and is always a POINTER to the
+                    // extended type (never a copy).
                     let self_ty: Option<CarlaType> = if func.extension {
                         let Some(owner) = &self.extending else {
                             CompilerOutputs::fatal(
@@ -230,9 +287,12 @@ impl Codegen {
                         _ => todo!(),
                     };
 
-                    sym.pop_scope();
+                    // The body is generated INSIDE the scope that holds the parameters
+                    // (`self` included): the emitter looks them up by name.
                     let mut cgen = Codegen::new(runner);
                     let body = cgen.generate(sym, Some(ret_ty));
+
+                    sym.pop_scope();
 
                     let ctype = decl._type.unwrap();
                     morgana::function(self, ctype.to_morgana(), decl.identifier, args, body);

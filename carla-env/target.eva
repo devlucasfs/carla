@@ -1,6 +1,15 @@
 @target
-' Specify the file who your entrypoint is
+' Specify the file who your entrypoint is in.
 main: "src/main.crl"
+
+' The .lua file must contain the definitions—evaluated at compile
+' time—that will be used to cross-compile the same codebase, by
+' enabling or disabling the inclusion of specific blocks of code.
+constexpr: "core/constexpr.lua"
+
+builds: [
+    "auto"
+]
 
 ' You can use here to specify the output format.
 ' Is available: "native-bin", "static-archive" or "shared-object"
