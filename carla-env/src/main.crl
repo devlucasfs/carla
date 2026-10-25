@@ -1,5 +1,25 @@
+using string = byte*;
+extend string {
+    int len = fn(self) {
+        for let i := 0; i <= 0x7fffffffffffffff; i++ {
+            if self.*[i] != 0 : continue;
+            return i;
+        }
+
+        syscall! 0x1(1, "String size not found!\n", 24);
+        0
+    }
+
+    void print = fn(self) {
+        let cp := self.*;
+        syscall! 0x1(1, self.*, cp.len());
+    }
+}
+
+
 @_start
 int main = fn() {
-    syscall! 0x1(1, "Hello, world!\n", 15);
+    let msg := "Hello, world! I love samar!\n" as string;
+    msg.print();
     0
 }

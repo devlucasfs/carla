@@ -1,17 +1,19 @@
 use crate::{
     compiler::scanner::{
-        BinOP::{Different, Equals, Greater, GreaterEqual, IterConcat, Less, LessEqual},
+        BinOP::{
+            Different, Equals, Greater, GreaterEqual, IterConcat, IterConcatEq, Less, LessEqual,
+        },
         BitOp::{AND, LSH, NOT, OR, RSH, XOR},
         Keywords::{
-            As, Const, Constexpr, Defer, Else, Extend, Extern, Fn, For, If, Let, Mut, Puts, Return,
-            Syscall, Unfold, Using, Var, While,
+            As, Break, Const, Constexpr, Continue, Defer, Else, Extend, Extern, Fn, For, If, Let,
+            Mut, Puts, Return, Syscall, Unfold, Using, Var, While,
         },
         MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star},
         PBB::{Brace, Bracket, Paren},
         TokenKind::{
-            And, Arrow, Bang, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, Dot, Float,
-            Hexa, Identifier, Integer, Keyword, MathOperator, Nil, Octal, Open, Or, RunaString,
-            Semi, Sign, Walrus, Wild,
+            And, Arrow, Bang, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, Dec, Dot,
+            Float, Hexa, Identifier, Inc, Integer, Keyword, MathOperator, Nil, Octal, Open, Or,
+            RunaString, Semi, Sign, Walrus, Wild,
         },
     },
     utils::compiler_outputs::CompilerOutputs,
@@ -20,6 +22,8 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub enum Keywords {
     As,
+    Break,
+    Continue,
     If,
     Else,
     Constexpr,
@@ -54,6 +58,7 @@ pub enum MathOp {
 pub enum BinOP {
     GreaterEqual,
     IterConcat,
+    IterConcatEq,
     LessEqual,
     Different,
     Greater,
@@ -95,6 +100,8 @@ pub enum TokenKind {
     Bool(bool),
     Open(PBB),
     Walrus,
+    Inc,
+    Dec,
     Arrow,
     Colon,
     Comma,
@@ -129,6 +136,8 @@ const SEMI_TOKEN: &Token = &Token {
 fn is_keyword(identifier: &str) -> Option<Keywords> {
     match identifier {
         "as" => Some(As),
+        "break" => Some(Break),
+        "continue" => Some(Continue),
         "if" => Some(If),
         "else" => Some(Else),
         "constexpr" => Some(Constexpr),
@@ -179,8 +188,11 @@ impl Scanner {
             {
                 i += 1;
                 let mut number = String::from(char::from(ch));
-                while self.bytes[i].is_ascii_digit()
-                    || ((!number.contains('.')) && self.bytes[i] == b'.')
+                while i < self.bytes.len()
+                    && (self.bytes[i].is_ascii_digit()
+                        || (!number.contains('.')
+                            && self.bytes[i] == b'.'
+                            && self.bytes.get(i + 1).is_some_and(|b| b.is_ascii_digit())))
                 {
                     number.push(char::from(self.bytes[i]));
                     i += 1;
@@ -244,6 +256,11 @@ impl Scanner {
                     continue;
                 }
 
+                b'.' if second == b'.' && self.bytes.get(i + 2) == Some(&b'=') => {
+                    i += 2;
+                    self.push(BinaryOperator(IterConcatEq))
+                }
+
                 b'.' if second == b'.' => {
                     i += 1;
                     self.push(BinaryOperator(IterConcat))
@@ -252,6 +269,16 @@ impl Scanner {
                 b'-' if second == b'>' => {
                     i += 1;
                     self.push(Arrow)
+                }
+
+                // `--` after `;` `{` `,` is a comment (handled first); anywhere else it is a decrement
+                b'-' if second == b'-' => {
+                    i += 1;
+                    self.push(Dec)
+                }
+                b'+' if second == b'+' => {
+                    i += 1;
+                    self.push(Inc)
                 }
 
                 b'>' if second == b'>' => {

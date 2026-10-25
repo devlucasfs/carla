@@ -4,18 +4,19 @@ use crate::{
     compiler::{
         abi,
         iterator::ContextIterator,
-        nesting::Context::{Block, Common},
+        nesting::Context::{self, Block, Common},
         node::Node::{self, Expression},
         patterns::types::{self, Base, CarlaType},
         scanner::{
+            BinOP as Cmp,
             BitOp::AND,
             Keywords::{As, Syscall},
             MathOp::{self, Minus},
-            PBB::Paren,
+            PBB::{Bracket, Paren},
             Token,
             TokenKind::{
-                self, Bang, Bool, Comma, Dot, Float, Hexa, Identifier, Integer, Keyword,
-                MathOperator, Nil, Octal, Semi, String as Str,
+                self, And, Bang, BinaryOperator, BitOperator, Bool, Comma, Dot, Float, Hexa,
+                Identifier, Integer, Keyword, MathOperator, Nil, Octal, Or, Semi, String as Str,
             },
         },
         symbols::{
@@ -29,9 +30,18 @@ use crate::{
 const DEFAULT_INT: &str = "int";
 const DEFAULT_BOOL: &str = "bool";
 const DEFAULT_STR_BASE: &str = "byte";
-/// Tipo de retorno de uma syscall (palavra de máquina em rax).
-/// Troque pelo tipo de 64 bits registrado em Symbols.
 const DEFAULT_SYSCALL_RET: &str = "int";
+
+mod bp {
+    pub const LOG_OR: (u8, u8) = (1, 2);
+    pub const LOG_AND: (u8, u8) = (3, 4);
+    pub const COMPARE: (u8, u8) = (5, 6);
+    pub const BIT_AND: (u8, u8) = (7, 8);
+    pub const ADDITIVE: (u8, u8) = (9, 10);
+    pub const MULTIPLICATIVE: (u8, u8) = (11, 12);
+    pub const CAST: u8 = 13;
+    pub const PREFIX: u8 = 15;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UnOp {
@@ -47,6 +57,67 @@ pub enum BinOp {
     Div,
     Rem,
     BitAnd,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    LogAnd,
+    LogOr,
+}
+
+impl BinOp {
+    pub fn is_comparison(self) -> bool {
+        matches!(
+            self,
+            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge
+        )
+    }
+
+    pub fn is_logical(self) -> bool {
+        matches!(self, Self::LogAnd | Self::LogOr)
+    }
+
+    fn symbol(self) -> &'static str {
+        match self {
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Rem => "%",
+            Self::BitAnd => "&",
+            Self::Eq => "==",
+            Self::Ne => "!=",
+            Self::Lt => "<",
+            Self::Le => "<=",
+            Self::Gt => ">",
+            Self::Ge => ">=",
+            Self::LogAnd => "&&",
+            Self::LogOr => "||",
+        }
+    }
+
+    fn from_token(kind: &TokenKind) -> Option<(Self, u8, u8)> {
+        let (op, (left, right)) = match kind {
+            BitOperator(AND) => (Self::BitAnd, bp::BIT_AND),
+            MathOperator(MathOp::Plus) => (Self::Add, bp::ADDITIVE),
+            MathOperator(MathOp::Minus) => (Self::Sub, bp::ADDITIVE),
+            MathOperator(MathOp::Star) => (Self::Mul, bp::MULTIPLICATIVE),
+            MathOperator(MathOp::Slash) => (Self::Div, bp::MULTIPLICATIVE),
+            MathOperator(MathOp::Mod) => (Self::Rem, bp::MULTIPLICATIVE),
+            BinaryOperator(Cmp::Equals) => (Self::Eq, bp::COMPARE),
+            BinaryOperator(Cmp::Different) => (Self::Ne, bp::COMPARE),
+            BinaryOperator(Cmp::Less) => (Self::Lt, bp::COMPARE),
+            BinaryOperator(Cmp::LessEqual) => (Self::Le, bp::COMPARE),
+            BinaryOperator(Cmp::Greater) => (Self::Gt, bp::COMPARE),
+            BinaryOperator(Cmp::GreaterEqual) => (Self::Ge, bp::COMPARE),
+            And => (Self::LogAnd, bp::LOG_AND),
+            Or => (Self::LogOr, bp::LOG_OR),
+            _ => return None,
+        };
+        Some((op, left, right))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,7 +133,6 @@ pub enum Expr {
     Unary(UnOp, Box<Expr>, CarlaType),
     Binary(BinOp, Box<Expr>, Box<Expr>, CarlaType),
     Cast(Box<Expr>, CarlaType),
-    /// `ptr.*`: reads the value a pointer points to (the CarlaType is the pointee type)
     Deref(Box<Expr>, CarlaType),
 }
 
@@ -105,6 +175,14 @@ impl Compiled {
             Compiled::Lazy(it) => it.source(),
         }
     }
+
+    fn from_expr(expr: Expr) -> Self {
+        if expr.is_const() {
+            Compiled::Const(expr)
+        } else {
+            Compiled::Lazy(ExprIterator::new(expr))
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -134,6 +212,7 @@ pub enum StepOp {
     Syscall(u64, Vec<Operand>),
     Cast(Operand, CarlaType),
     Deref(Operand),
+    Logical(BinOp, Operand, Vec<Step>, Operand),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -192,6 +271,10 @@ fn emit(out: &mut Vec<Step>, ty: &CarlaType, op: StepOp) -> Operand {
     Operand::Temp(id)
 }
 
+fn lower_all(exprs: &[Expr], out: &mut Vec<Step>) -> Vec<Operand> {
+    exprs.iter().map(|e| lower(e, out)).collect()
+}
+
 fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
     match e {
         Expr::Var(n, _) => Operand::Var(n.clone()),
@@ -200,17 +283,23 @@ fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
             let a = lower(x, out);
             emit(out, t, StepOp::Unary(*op, a))
         }
+        Expr::Binary(op, l, r, t) if op.is_logical() => {
+            let a = lower(l, out);
+            let mut rhs_steps = vec![];
+            let b = lower(r, &mut rhs_steps);
+            emit(out, t, StepOp::Logical(*op, a, rhs_steps, b))
+        }
         Expr::Binary(op, l, r, t) => {
             let a = lower(l, out);
             let b = lower(r, out);
             emit(out, t, StepOp::Binary(*op, a, b))
         }
         Expr::Call(n, args, t) => {
-            let a = args.iter().map(|x| lower(x, out)).collect();
+            let a = lower_all(args, out);
             emit(out, t, StepOp::Call(n.clone(), a))
         }
         Expr::Syscall(n, args, t) => {
-            let a = args.iter().map(|x| lower(x, out)).collect();
+            let a = lower_all(args, out);
             emit(out, t, StepOp::Syscall(*n, a))
         }
         Expr::Cast(x, t) => {
@@ -221,15 +310,13 @@ fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
             let a = lower(x, out);
             emit(out, t, StepOp::Deref(a))
         }
-        lit => Operand::Const(lit.clone()),
+        literal => Operand::Const(literal.clone()),
     }
 }
 
 fn morgana_of(ty: &CarlaType) -> Option<MorganaType> {
-    if !ty.dim.is_empty() {
-        return None;
-    }
-    if ty.levels == 0 && ty.tuple.is_empty() && ty.base.is_none() {
+    let untyped = ty.levels == 0 && ty.tuple.is_empty() && ty.base.is_none();
+    if !ty.dim.is_empty() || untyped {
         return None;
     }
     Some(ty.to_morgana())
@@ -237,138 +324,6 @@ fn morgana_of(ty: &CarlaType) -> Option<MorganaType> {
 
 fn is_int(m: &MorganaType) -> bool {
     matches!(m, MorganaType::Integer(_) | MorganaType::UInteger(_))
-}
-
-fn fits(v: i128, m: &MorganaType) -> bool {
-    match m {
-        MorganaType::Integer(b) if *b > 0 && *b < 128 => {
-            let lim = 1i128 << (*b - 1);
-            (-lim..lim).contains(&v)
-        }
-        MorganaType::UInteger(b) if *b > 0 && *b < 127 => v >= 0 && v < (1i128 << *b),
-        MorganaType::UInteger(_) => v >= 0,
-        _ => true,
-    }
-}
-
-fn check_fits(v: i128, ty: &CarlaType) -> Result<(), String> {
-    match morgana_of(ty) {
-        Some(m) if !fits(v, &m) => Err(format!(
-            "o valor {v} não cabe em `{}` (overflow em tempo de compilação)",
-            ty.to_string()
-        )),
-        _ => Ok(()),
-    }
-}
-
-fn unsupported(op: impl std::fmt::Debug, tys: &[&CarlaType]) -> String {
-    let names: Vec<String> = tys.iter().map(|t| format!("`{}`", t.to_string())).collect();
-    format!(
-        "operador {op:?} não se aplica a {} (overload de operador ainda não suportado)",
-        names.join(" e ")
-    )
-}
-
-fn type_unary(op: UnOp, t: &CarlaType) -> Result<CarlaType, String> {
-    match (op, morgana_of(t)) {
-        (UnOp::Neg, Some(MorganaType::Integer(_))) => Ok(t.clone()),
-        (UnOp::Neg, Some(MorganaType::UInteger(_))) => {
-            Err(format!("negação de `{}`: tipo sem sinal", t.to_string()))
-        }
-        (UnOp::Not, Some(m)) if is_int(&m) => Ok(t.clone()),
-        _ => Err(unsupported(op, &[t])),
-    }
-}
-
-fn type_binary(op: BinOp, l: &CarlaType, r: &CarlaType) -> Result<CarlaType, String> {
-    let (Some(ml), Some(mr)) = (morgana_of(l), morgana_of(r)) else {
-        return Err(unsupported(op, &[l, r]));
-    };
-
-    if !is_int(&ml) || !is_int(&mr) {
-        return Err(unsupported(op, &[l, r]));
-    }
-
-    if ml != mr {
-        return Err(format!(
-            "tipos diferentes em {op:?}: `{}` e `{}` (sem conversão implícita; use `as`)",
-            l.to_string(),
-            r.to_string()
-        ));
-    }
-
-    Ok(l.clone())
-}
-
-fn adapt(lit: Expr, to: &CarlaType) -> Result<Expr, String> {
-    match (&lit, morgana_of(to)) {
-        (Expr::Integer(v, _), Some(m)) if is_int(&m) => {
-            check_fits(*v, to)?;
-            Ok(Expr::Integer(*v, to.clone()))
-        }
-        _ => Ok(lit),
-    }
-}
-
-fn make_unary(op: UnOp, x: Expr) -> Result<Expr, String> {
-    let ty = type_unary(op, &x.ty())?;
-    let folded = match (op, &x) {
-        (UnOp::Neg, Expr::Integer(i, _)) => {
-            let v = i.checked_neg().ok_or("overflow em tempo de compilação")?;
-            check_fits(v, &ty)?;
-            Some(Expr::Integer(v, ty.clone()))
-        }
-        (UnOp::Not, Expr::Boolean(b, _)) => Some(Expr::Boolean(!b, ty.clone())),
-        (UnOp::Not, Expr::Integer(i, _)) => Some(Expr::Integer((*i == 0) as i128, ty.clone())),
-        _ => None,
-    };
-    Ok(folded.unwrap_or_else(|| Expr::Unary(op, Box::new(x), ty)))
-}
-
-fn make_binary(op: BinOp, l: Expr, r: Expr) -> Result<Expr, String> {
-    let (l, r) = match (l.is_const(), r.is_const()) {
-        (true, false) => (adapt(l, &r.ty())?, r),
-        (false, true) => {
-            let t = l.ty();
-            (l, adapt(r, &t)?)
-        }
-        _ => (l, r),
-    };
-
-    let ty = type_binary(op, &l.ty(), &r.ty())?;
-    if let Some(v) = fold_binary(op, &l, &r, &ty)? {
-        return Ok(v);
-    }
-    Ok(Expr::Binary(op, Box::new(l), Box::new(r), ty))
-}
-
-fn fold_binary(op: BinOp, l: &Expr, r: &Expr, ty: &CarlaType) -> Result<Option<Expr>, String> {
-    use BinOp::*;
-
-    if let (Expr::Boolean(a, _), Expr::Boolean(b, _)) = (l, r) {
-        if op == BitAnd {
-            return Ok(Some(Expr::Boolean(a & b, ty.clone())));
-        }
-        return Ok(None);
-    }
-
-    let (Expr::Integer(a, _), Expr::Integer(b, _)) = (l, r) else {
-        return Ok(None);
-    };
-
-    let v = match op {
-        Div | Rem if *b == 0 => return Err("divisão por zero em tempo de compilação".into()),
-        Add => a.checked_add(*b),
-        Sub => a.checked_sub(*b),
-        Mul => a.checked_mul(*b),
-        Div => a.checked_div(*b),
-        Rem => a.checked_rem(*b),
-        BitAnd => Some(a & b),
-    }
-    .ok_or("overflow em tempo de compilação")?;
-
-    check_fits(v, ty)?;
-    Ok(Some(Expr::Integer(v, ty.clone())))
 }
 
 fn is_ptr(t: &CarlaType) -> bool {
@@ -398,35 +353,252 @@ fn is_word(t: &CarlaType) -> bool {
         )
 }
 
+fn fits(v: i128, m: &MorganaType) -> bool {
+    match m {
+        MorganaType::Integer(b) if *b > 0 && *b < 128 => {
+            let lim = 1i128 << (*b - 1);
+            (-lim..lim).contains(&v)
+        }
+        MorganaType::UInteger(b) if *b > 0 && *b < 127 => v >= 0 && v < (1i128 << *b),
+        MorganaType::UInteger(_) => v >= 0,
+        _ => true,
+    }
+}
+
+fn check_fits(v: i128, ty: &CarlaType) -> Result<(), String> {
+    match morgana_of(ty) {
+        Some(m) if !fits(v, &m) => Err(format!(
+            "the value {v} doesn't fit in `{}` (compile-time overflow)",
+            ty.to_string()
+        )),
+        _ => Ok(()),
+    }
+}
+
+fn unsupported(op: impl std::fmt::Debug, tys: &[&CarlaType]) -> String {
+    let names: Vec<String> = tys.iter().map(|t| format!("`{}`", t.to_string())).collect();
+    format!(
+        "operator {op:?} doesn't apply to {} (operator overloading isn't supported yet)",
+        names.join(" and ")
+    )
+}
+
+fn type_unary(op: UnOp, t: &CarlaType) -> Result<CarlaType, String> {
+    match (op, morgana_of(t)) {
+        (UnOp::Neg, Some(MorganaType::Integer(_))) => Ok(t.clone()),
+        (UnOp::Neg, Some(MorganaType::UInteger(_))) => {
+            Err(format!("can't negate `{}`: it is an unsigned type", t.to_string()))
+        }
+        (UnOp::Not, Some(m)) if is_int(&m) => Ok(t.clone()),
+        _ => Err(unsupported(op, &[t])),
+    }
+}
+
+fn type_binary(
+    op: BinOp,
+    l: &CarlaType,
+    r: &CarlaType,
+    bool_ty: &CarlaType,
+) -> Result<CarlaType, String> {
+    if op.is_logical() {
+        let want = bool_ty.to_string();
+        if l.to_string() != want || r.to_string() != want {
+            return Err(format!(
+                "operator `{}` needs `{want}` on both sides, found `{}` and `{}` \
+                 (compare explicitly, e.g. `x != 0`)",
+                op.symbol(),
+                l.to_string(),
+                r.to_string()
+            ));
+        }
+        return Ok(bool_ty.clone());
+    }
+
+    if matches!(op, BinOp::Eq | BinOp::Ne) && is_ptr(l) && is_ptr(r) {
+        return Ok(bool_ty.clone());
+    }
+
+    let (Some(ml), Some(mr)) = (morgana_of(l), morgana_of(r)) else {
+        return Err(unsupported(op, &[l, r]));
+    };
+
+    if !is_int(&ml) || !is_int(&mr) {
+        return Err(unsupported(op, &[l, r]));
+    }
+
+    if ml != mr {
+        return Err(format!(
+            "mismatched types in {op:?}: `{}` and `{}` (no implicit conversion; use `as`)",
+            l.to_string(),
+            r.to_string()
+        ));
+    }
+
+    Ok(if op.is_comparison() {
+        bool_ty.clone()
+    } else {
+        l.clone()
+    })
+}
+
+fn adapt(lit: Expr, to: &CarlaType) -> Result<Expr, String> {
+    match (&lit, morgana_of(to)) {
+        (Expr::Integer(v, _), Some(m)) if is_int(&m) => {
+            check_fits(*v, to)?;
+            Ok(Expr::Integer(*v, to.clone()))
+        }
+        _ => Ok(lit),
+    }
+}
+
+fn make_unary(op: UnOp, x: Expr) -> Result<Expr, String> {
+    let ty = type_unary(op, &x.ty())?;
+    let folded = match (op, &x) {
+        (UnOp::Neg, Expr::Integer(i, _)) => {
+            let v = i.checked_neg().ok_or("compile-time overflow")?;
+            check_fits(v, &ty)?;
+            Some(Expr::Integer(v, ty.clone()))
+        }
+        (UnOp::Not, Expr::Boolean(b, _)) => Some(Expr::Boolean(!b, ty.clone())),
+        (UnOp::Not, Expr::Integer(i, _)) => Some(Expr::Integer((*i == 0) as i128, ty.clone())),
+        _ => None,
+    };
+    Ok(folded.unwrap_or_else(|| Expr::Unary(op, Box::new(x), ty)))
+}
+
+fn make_binary(op: BinOp, l: Expr, r: Expr, syms: &Symbols) -> Result<Expr, String> {
+    if matches!(op, BinOp::Add | BinOp::Sub) {
+        match (is_ptr(&l.ty()), is_ptr(&r.ty()), op) {
+            (true, false, _) => return make_ptr_offset(op, l, r, syms),
+            (false, true, BinOp::Add) => return make_ptr_offset(op, r, l, syms),
+            (false, true, _) => return Err("can't subtract a pointer from a number".into()),
+            (true, true, _) => {
+                return Err(
+                    "can't add or subtract two pointers (cast both to integers to get a distance)"
+                        .into(),
+                )
+            }
+            _ => {}
+        }
+    }
+
+    let bool_ty = builtin(syms, DEFAULT_BOOL)?;
+
+    let (l, r) = match (l.is_const(), r.is_const()) {
+        (true, false) => (adapt(l, &r.ty())?, r),
+        (false, true) => {
+            let t = l.ty();
+            (l, adapt(r, &t)?)
+        }
+        _ => (l, r),
+    };
+
+    let ty = type_binary(op, &l.ty(), &r.ty(), &bool_ty)?;
+    if let Some(folded) = fold_binary(op, &l, &r, &ty)? {
+        return Ok(folded);
+    }
+    Ok(Expr::Binary(op, Box::new(l), Box::new(r), ty))
+}
+
+fn fold_logical(op: BinOp, l: &Expr, r: &Expr, ty: &CarlaType) -> Option<Expr> {
+    let and = op == BinOp::LogAnd;
+    match (l, r) {
+        (Expr::Boolean(a, _), Expr::Boolean(b, _)) => Some(Expr::Boolean(
+            if and { *a && *b } else { *a || *b },
+            ty.clone(),
+        )),
+        (Expr::Boolean(a, _), other) => Some(if *a == and {
+            other.clone()
+        } else {
+            Expr::Boolean(*a, ty.clone())
+        }),
+        (other, Expr::Boolean(b, _)) if *b == and => Some(other.clone()),
+        _ => None,
+    }
+}
+
+fn fold_binary(op: BinOp, l: &Expr, r: &Expr, ty: &CarlaType) -> Result<Option<Expr>, String> {
+    use BinOp::*;
+
+    if op.is_logical() {
+        return Ok(fold_logical(op, l, r, ty));
+    }
+
+    if let (Expr::Boolean(a, _), Expr::Boolean(b, _)) = (l, r) {
+        return Ok(match op {
+            BitAnd => Some(Expr::Boolean(a & b, ty.clone())),
+            Eq => Some(Expr::Boolean(a == b, ty.clone())),
+            Ne => Some(Expr::Boolean(a != b, ty.clone())),
+            _ => None,
+        });
+    }
+
+    let (Expr::Integer(a, _), Expr::Integer(b, _)) = (l, r) else {
+        return Ok(None);
+    };
+
+    if op.is_comparison() {
+        let v = match op {
+            Eq => a == b,
+            Ne => a != b,
+            Lt => a < b,
+            Le => a <= b,
+            Gt => a > b,
+            Ge => a >= b,
+            _ => unreachable!(),
+        };
+        return Ok(Some(Expr::Boolean(v, ty.clone())));
+    }
+
+    let v = match op {
+        Div | Rem if *b == 0 => return Err("compile-time division by zero".into()),
+        Add => a.checked_add(*b),
+        Sub => a.checked_sub(*b),
+        Mul => a.checked_mul(*b),
+        Div => a.checked_div(*b),
+        Rem => a.checked_rem(*b),
+        BitAnd => Some(a & b),
+        _ => unreachable!("comparison and logical operators are handled above"),
+    }
+    .ok_or("compile-time overflow")?;
+
+    check_fits(v, ty)?;
+    Ok(Some(Expr::Integer(v, ty.clone())))
+}
+
+fn cast_allowed(from: &CarlaType, to: &CarlaType) -> bool {
+    let (from_ptr, to_ptr) = (is_ptr(from), is_ptr(to));
+
+    (is_int_ty(from) && is_int_ty(to))
+        || (from_ptr && to_ptr)
+        || (from_ptr && is_word(to))
+        || (is_word(from) && to_ptr)
+}
+
+fn literal_int(e: &Expr) -> Option<i128> {
+    match e {
+        Expr::Integer(v, _) => Some(*v),
+        Expr::Boolean(b, _) => Some(*b as i128),
+        _ => None,
+    }
+}
+
 fn make_cast(x: Expr, to: CarlaType) -> Result<Expr, String> {
     let from = x.ty();
-    let (fs, ts) = (from.to_string(), to.to_string());
+    let (from_name, to_name) = (from.to_string(), to.to_string());
 
-    if fs == ts {
+    if from_name == to_name {
         return Ok(x);
     }
 
-    let (fp, tp) = (is_ptr(&from), is_ptr(&to));
-
-    let compatible = (is_int_ty(&from) && is_int_ty(&to)) // integer <-> integer
-        || (fp && tp)                                      // pointer <-> pointer
-        || (fp && is_word(&to))                            // pointer -> 64-bit integer
-        || (is_word(&from) && tp); // 64-bit integer -> pointer
-
-    if !compatible {
+    if !cast_allowed(&from, &to) {
         return Err(format!(
-            "não é possível converter `{fs}` para `{ts}` \
-             (só inteiro <-> inteiro, ponteiro <-> ponteiro e ponteiro <-> inteiro de 64 bits)"
+            "can't convert `{from_name}` to `{to_name}` (only integer <-> integer, pointer <-> pointer and pointer <-> 64-bit integer are allowed)"
         ));
     }
 
     if is_int_ty(&to) {
-        let folded = match &x {
-            Expr::Integer(v, _) => Some(*v),
-            Expr::Boolean(b, _) => Some(*b as i128),
-            _ => None,
-        };
-        if let Some(v) = folded {
+        if let Some(v) = literal_int(&x) {
             check_fits(v, &to)?;
             return Ok(Expr::Integer(v, to));
         }
@@ -435,11 +607,24 @@ fn make_cast(x: Expr, to: CarlaType) -> Result<Expr, String> {
     Ok(Expr::Cast(Box::new(x), to))
 }
 
-/// `ptr.*`: the result has the pointee type (one `*` less).
+fn as_pointer(ty: &CarlaType) -> Option<CarlaType> {
+    if ty.levels > 0 {
+        return Some(ty.clone());
+    }
+
+    match &ty.base {
+        Some(Base {
+            symbol: TypeAlias(inner),
+            ..
+        }) if ty.dim.is_empty() => as_pointer(inner),
+        _ => None,
+    }
+}
+
 fn make_deref(x: Expr) -> Result<Expr, String> {
     let ty = x.ty();
 
-    if ty.levels == 0 {
+    let Some(mut pointee) = as_pointer(&ty) else {
         return Err(if is_ptr(&ty) {
             format!(
                 "cannot dereference `{}`: it is an untyped pointer (cast it first, e.g. `as T*`)",
@@ -448,12 +633,9 @@ fn make_deref(x: Expr) -> Result<Expr, String> {
         } else {
             format!("cannot dereference `{}`: it is not a pointer", ty.to_string())
         });
-    }
-
-    let mut pointee = ty.clone();
+    };
     pointee.levels -= 1;
 
-    // `nil` and other untyped pointers (`|_|*`): there is no value to read
     if pointee.levels == 0 && pointee.base.is_none() && pointee.tuple.is_empty() {
         return Err("cannot dereference an untyped pointer (cast it first, e.g. `as T*`)".into());
     }
@@ -465,164 +647,73 @@ fn make_deref(x: Expr) -> Result<Expr, String> {
     Ok(Expr::Deref(Box::new(x), pointee))
 }
 
-pub fn starts_with(kind: &TokenKind) -> bool {
-    matches!(
-        kind,
-        Identifier(_)
-            | Keyword(Syscall)
-            | Bool(_)
-            | TokenKind::BitOperator(AND)
-            | Integer(_)
-            | Hexa(_)
-            | Octal(_)
-            | Float(_)
-            | Str(_)
-            | MathOperator(Minus)
-            | Bang
-            | Nil
-    )
-}
-
-pub fn can_make_ptr(sym: &Symbol) -> bool {
-    matches!(sym, Variable(_, _, _) | ExternFunction(_, _))
-}
-
-fn builtin(syms: &Symbols, id: &str) -> Result<CarlaType, String> {
-    CarlaType::named(id, syms).ok_or_else(|| format!("tipo '{id}' não está registrado em Symbols"))
-}
-
-fn symbol_ty(id: &str, sym: &Symbol) -> Result<CarlaType, String> {
-    match sym {
-        Variable(Some(t), _, _) => Ok((**t).clone()),
-        Variable(None, _, _) => Err(format!("a variável '{id}' ainda não tem tipo definido")),
-        ExternFunction(ret, _) | UnfoldFunction(ret, _) => Ok((**ret).clone()),
-        _ => Err(format!("'{id}' não é um valor")),
+fn elem_size(t: &CarlaType) -> Result<i128, String> {
+    if is_ptr(t) {
+        return Ok(8);
     }
-}
 
-fn pointer_ty(id: &str, sym: &Symbol) -> Result<CarlaType, String> {
-    match sym {
-        Variable(Some(t), _, false) => Ok(t.pointer_to()),
-        Variable(None, _, false) => Err(format!("a variável '{id}' ainda não tem tipo definido")),
-        _ => Ok(CarlaType::untyped_ptr()),
-    }
-}
-
-fn int_literal(v: i128, syms: &Symbols) -> Result<Expr, String> {
-    let ty = builtin(syms, DEFAULT_INT)?;
-    check_fits(v, &ty)?;
-    Ok(Expr::Integer(v, ty))
-}
-
-fn binop_of(k: &TokenKind) -> Option<(BinOp, u8, u8)> {
-    Some(match k {
-        TokenKind::BitOperator(AND) => (BinOp::BitAnd, 3, 4),
-        MathOperator(MathOp::Plus) => (BinOp::Add, 5, 6),
-        MathOperator(MathOp::Minus) => (BinOp::Sub, 5, 6),
-        MathOperator(MathOp::Star) => (BinOp::Mul, 7, 8),
-        MathOperator(MathOp::Slash) => (BinOp::Div, 7, 8),
-        MathOperator(MathOp::Mod) => (BinOp::Rem, 7, 8),
-        _ => return None,
-    })
-}
-
-const AS_BP: u8 = 9;
-const PREFIX_BP: u8 = 11;
-
-fn parse_expr(
-    min_bp: u8,
-    syms: &mut Symbols,
-    it: &mut ContextIterator<'_>,
-) -> Result<Expr, String> {
-    let lhs = match it.next() {
-        None => return Err("expressão incompleta".into()),
-        Some(Block(pbb, inner)) if *pbb == Paren => {
-            let mut sub = ContextIterator::new(inner.as_slice(), 0);
-            let v = parse_expr(0, syms, &mut sub)?;
-            if sub.remaining() > 0 {
-                return Err("tokens sobrando dentro dos parênteses".into());
-            }
-            v
+    match morgana_of(t) {
+        Some(MorganaType::Integer(b)) | Some(MorganaType::UInteger(b)) if b > 0 && b % 8 == 0 => {
+            Ok((b / 8) as i128)
         }
-        Some(Common(tk)) => parse_prefix(tk, syms, it)?,
-        Some(_) => return Err("bloco inesperado no início da expressão".into()),
+        _ => Err(format!(
+            "pointer arithmetic over `{}` isn't supported yet (only integers and pointers)",
+            t.to_string()
+        )),
+    }
+}
+
+fn make_ptr_offset(op: BinOp, ptr: Expr, off: Expr, syms: &Symbols) -> Result<Expr, String> {
+    let pty = ptr.ty();
+
+    if matches!(ptr, Expr::Pointer(..)) {
+        return Err(
+            "pointer arithmetic on `&variable` isn't supported yet; keep the pointer in a variable first"
+                .into(),
+        );
+    }
+
+    let Some(mut pointee) = as_pointer(&pty) else {
+        return Err(format!(
+            "pointer arithmetic needs a typed pointer, found `{}` (cast it first, e.g. `as T*`)",
+            pty.to_string()
+        ));
     };
-    let lhs = parse_postfix(lhs, syms, it)?;
-    climb(lhs, min_bp, syms, it)
+    pointee.levels -= 1;
+    let size = elem_size(&pointee)?;
+
+    let word = builtin(syms, DEFAULT_SYSCALL_RET)?;
+    let off = if off.is_const() { adapt(off, &word)? } else { off };
+
+    let off_ty = off.ty();
+    if !is_word(&off_ty) {
+        return Err(format!(
+            "a pointer offset must be a 64-bit integer, found `{}` (use `as`)",
+            off_ty.to_string()
+        ));
+    }
+
+    let scaled = if size == 1 {
+        off
+    } else {
+        make_binary(BinOp::Mul, off, Expr::Integer(size, off_ty), syms)?
+    };
+
+    Ok(Expr::Binary(op, Box::new(ptr), Box::new(scaled), pty))
 }
 
-fn climb(
-    mut lhs: Expr,
-    min_bp: u8,
-    syms: &mut Symbols,
-    it: &mut ContextIterator<'_>,
-) -> Result<Expr, String> {
-    loop {
-        let Some(Common(tk)) = it.peek() else { break };
+/// `base[index]` == `(base + index).*`
+fn make_index(base: Expr, index: Expr, syms: &Symbols) -> Result<Expr, String> {
+    let ty = base.ty();
 
-        if tk.kind == Keyword(As) {
-            if AS_BP < min_bp {
-                break;
-            }
-            it.next();
-
-            let err = "Expected a type after `as`";
-            let Some(Common(first)) = it.next() else {
-                return Err(err.into());
-            };
-            let target = types::parse_path(first, syms, it)?;
-            lhs = make_cast(lhs, target)?;
-            continue;
-        }
-
-        let Some((op, lbp, rbp)) = binop_of(&tk.kind) else {
-            break;
-        };
-        if lbp < min_bp {
-            break;
-        }
-        it.next();
-        let rhs = parse_expr(rbp, syms, it)?;
-        lhs = make_binary(op, lhs, rhs)?;
+    if !ty.dim.is_empty() {
+        return Err(format!("indexing the array `{}` isn't supported yet", ty.to_string()));
     }
-    Ok(lhs)
-}
-
-/// Postfix `.`:
-///   `value.*`              reads the value behind a pointer
-///   `value.function(args)` calls an extended function, passing `&value` as `self`
-pub fn parse_postfix(
-    mut lhs: Expr,
-    syms: &mut Symbols,
-    it: &mut ContextIterator<'_>,
-) -> Result<Expr, String> {
-    while let Some(Common(tk)) = it.peek() {
-        if tk.kind != Dot {
-            break;
-        }
-        it.next();
-
-        // `.*`: dereference
-        if let Some(Common(star)) = it.peek() {
-            if star.kind == MathOperator(MathOp::Star) {
-                it.next();
-                lhs = make_deref(lhs)?;
-                continue;
-            }
-        }
-
-        let err = "Expected a function name or `*` after '.'";
-        let Some(Common(member)) = it.next() else {
-            return Err(err.into());
-        };
-        let Identifier(member_id) = &member.kind else {
-            return Err(err.into());
-        };
-
-        let owner = lhs.ty();
-        lhs = extended_call(&owner, Some(lhs), member_id, syms, it)?;
+    if as_pointer(&ty).is_none() {
+        return Err(format!("cannot index `{}`: it is not a pointer", ty.to_string()));
     }
-    Ok(lhs)
+
+    make_deref(make_ptr_offset(BinOp::Add, base, index, syms)?)
 }
 
 fn self_ref(receiver: Expr) -> Result<Expr, String> {
@@ -636,156 +727,353 @@ fn self_ref(receiver: Expr) -> Result<Expr, String> {
     }
 }
 
-fn extended_call(
-    owner: &CarlaType,
-    receiver: Option<Expr>,
-    member: &str,
-    syms: &mut Symbols,
-    it: &mut ContextIterator<'_>,
-) -> Result<Expr, String> {
-    let full = abi::extension_symbol(owner, member);
-
-    let Some(sym) = syms.lookup(&full) else {
-        return Err(format!(
-            "`{}` has no extended function `{member}` ({full})",
-            owner.to_string()
-        ));
-    };
-
-    if !matches!(
-        sym,
-        Variable(_, _, true) | ExternFunction(_, _) | UnfoldFunction(_, _)
-    ) {
-        return Err(format!("`{full}` isn't a function"));
-    }
-
-    let ret = symbol_ty(&full, sym)?;
-    let Expr::Call(name, mut args, ty) = parse_call(&full, ret, syms, it)? else {
-        unreachable!()
-    };
-
-    if let Some(r) = receiver {
-        args.insert(0, self_ref(r)?);
-    }
-
-    Ok(Expr::Call(name, args, ty))
+pub fn can_make_ptr(sym: &Symbol) -> bool {
+    matches!(sym, Variable(_, _, _) | ExternFunction(_, _))
 }
 
-fn parse_prefix(
-    token: &Token,
-    syms: &mut Symbols,
-    it: &mut ContextIterator<'_>,
-) -> Result<Expr, String> {
-    match &token.kind {
-        Keyword(Syscall) => parse_syscall(syms, it),
+fn builtin(syms: &Symbols, id: &str) -> Result<CarlaType, String> {
+    CarlaType::named(id, syms).ok_or_else(|| format!("type '{id}' isn't registered in Symbols"))
+}
 
-        MathOperator(Minus) => make_unary(UnOp::Neg, parse_expr(PREFIX_BP, syms, it)?),
-        Bang => make_unary(UnOp::Not, parse_expr(PREFIX_BP, syms, it)?),
+fn symbol_ty(id: &str, sym: &Symbol) -> Result<CarlaType, String> {
+    match sym {
+        Variable(Some(t), _, _) => Ok((**t).clone()),
+        Variable(None, _, _) => Err(format!("variable '{id}' doesn't have a type yet")),
+        ExternFunction(ret, _) | UnfoldFunction(ret, _) => Ok((**ret).clone()),
+        _ => Err(format!("'{id}' isn't a value")),
+    }
+}
 
-        TokenKind::BitOperator(AND) => {
-            let err = "Expected an identifier after a & (pointer operator)";
-            let Some(Common(tk)) = it.next() else {
-                return Err(err.into());
-            };
-            let Identifier(identifier) = &tk.kind else {
-                return Err(err.into());
-            };
-            let Some(sym) = syms.lookup(identifier) else {
-                return Err(format!("{identifier} was not found"));
-            };
-            if !can_make_ptr(sym) {
-                return Err(format!("you can't make a pointer of {identifier}"));
-            }
-            let ty = pointer_ty(identifier, sym)?;
-            Ok(Expr::Pointer(identifier.clone(), ty))
+fn pointer_ty(id: &str, sym: &Symbol) -> Result<CarlaType, String> {
+    match sym {
+        Variable(Some(t), _, false) => Ok(t.pointer_to()),
+        Variable(None, _, false) => Err(format!("variable '{id}' doesn't have a type yet")),
+        _ => Ok(CarlaType::untyped_ptr()),
+    }
+}
+
+fn int_literal(v: i128, syms: &Symbols) -> Result<Expr, String> {
+    let ty = builtin(syms, DEFAULT_INT)?;
+    check_fits(v, &ty)?;
+    Ok(Expr::Integer(v, ty))
+}
+
+pub fn starts_with(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        Identifier(_)
+            | Keyword(Syscall)
+            | Bool(_)
+            | BitOperator(AND)
+            | Integer(_)
+            | Hexa(_)
+            | Octal(_)
+            | Float(_)
+            | Str(_)
+            | MathOperator(Minus)
+            | Bang
+            | Nil
+    )
+}
+
+struct Parser<'a, 'c> {
+    syms: &'a mut Symbols,
+    it: &'a mut ContextIterator<'c>,
+}
+
+impl<'a, 'c> Parser<'a, 'c> {
+    fn new(syms: &'a mut Symbols, it: &'a mut ContextIterator<'c>) -> Self {
+        Self { syms, it }
+    }
+
+    fn at(&mut self, kind: &TokenKind) -> bool {
+        matches!(self.it.peek(), Some(Common(tk)) if tk.kind == *kind)
+    }
+
+    fn at_bracket(&mut self) -> bool {
+        matches!(self.it.peek(), Some(Block(Bracket, _)))
+    }
+
+    fn peek_binary_op(&mut self) -> Option<(BinOp, u8, u8)> {
+        match self.it.peek() {
+            Some(Common(tk)) => BinOp::from_token(&tk.kind),
+            _ => None,
         }
+    }
 
-        Integer(i) | Hexa(i) | Octal(i) => int_literal(*i, syms),
-        Bool(b) => Ok(Expr::Boolean(*b, builtin(syms, DEFAULT_BOOL)?)),
-        Str(s) => Ok(Expr::String(
-            s.clone(),
-            builtin(syms, DEFAULT_STR_BASE)?.pointer_to(),
-        )),
-        Nil => Ok(Expr::Nil),
-        Float(_) => Err("a Morgana ainda não tem tipo float".into()),
+    fn next_token(&mut self) -> Option<&'c Token> {
+        match self.it.next() {
+            Some(Common(tk)) => Some(tk),
+            _ => None,
+        }
+    }
 
-        Identifier(id) => {
-            let Some(sym) = syms.lookup(id) else {
-                return Err(format!("simbolo n existente : '{id}'"));
-            };
+    fn next_identifier(&mut self) -> Option<&'c str> {
+        match &self.next_token()?.kind {
+            Identifier(id) => Some(id.as_str()),
+            _ => None,
+        }
+    }
 
-            let is_type = matches!(sym, BType(_) | TypeAlias(_));
-            if is_type {
-                let owner = types::parse_path(token, syms, it)?;
+    fn expr(&mut self, min_bp: u8) -> Result<Expr, String> {
+        let head = match self.it.next() {
+            None => return Err("incomplete expression".into()),
+            Some(Block(Paren, inner)) => self.group(inner)?,
+            Some(Common(tk)) => self.prefix(tk)?,
+            Some(_) => return Err("unexpected block at the start of an expression".into()),
+        };
+        self.continue_expr(head, min_bp)
+    }
 
-                let err = format!(
-                    "`{}` is a type, not a value; use `{}.function(...)`",
-                    owner.to_string(),
-                    owner.to_string()
-                );
-                let Some(Common(dot)) = it.next() else {
-                    return Err(err);
-                };
-                if dot.kind != Dot {
-                    return Err(err);
+    fn continue_expr(&mut self, head: Expr, min_bp: u8) -> Result<Expr, String> {
+        let lhs = self.postfix(head)?;
+        self.climb(lhs, min_bp)
+    }
+
+    fn group(&mut self, inner: &[Context]) -> Result<Expr, String> {
+        let mut sub = ContextIterator::new(inner, 0);
+        let value = Parser::new(self.syms, &mut sub).expr(0)?;
+        if sub.remaining() > 0 {
+            return Err("leftover tokens inside the parentheses".into());
+        }
+        Ok(value)
+    }
+
+    fn climb(&mut self, mut lhs: Expr, min_bp: u8) -> Result<Expr, String> {
+        loop {
+            if self.at(&Keyword(As)) {
+                if bp::CAST < min_bp {
+                    break;
                 }
-                let Some(Common(member)) = it.next() else {
-                    return Err(err);
-                };
-                let Identifier(member_id) = &member.kind else {
-                    return Err(err);
-                };
-
-                return extended_call(&owner, None, member_id, syms, it);
+                self.it.next();
+                lhs = self.cast(lhs)?;
+                continue;
             }
 
-            let is_call = match sym {
-                Variable(_, _, func) => *func,
-                ExternFunction(_, _) => true,
-                UnfoldFunction(_, _) => true,
-                _ => return Err(format!("{id} isn't a valid identifier")),
+            let Some((op, left, right)) = self.peek_binary_op() else {
+                break;
             };
+            if left < min_bp {
+                break;
+            }
+            self.it.next();
+            let rhs = self.expr(right)?;
+            lhs = make_binary(op, lhs, rhs, self.syms)?;
 
-            let ty = symbol_ty(id, sym)?;
-
-            if is_call {
-                parse_call(id, ty, syms, it)
-            } else {
-                Ok(Expr::Var(id.clone(), ty))
+            if op.is_comparison()
+                && matches!(self.peek_binary_op(), Some((next, _, _)) if next.is_comparison())
+            {
+                return Err("comparison operators can't be chained (use `a < b && b < c`)".into());
             }
         }
+        Ok(lhs)
+    }
 
-        _ => Err(format!(
-            "token não suportado em expressão: {:?}",
-            token.kind
-        )),
+    fn cast(&mut self, value: Expr) -> Result<Expr, String> {
+        let Some(first) = self.next_token() else {
+            return Err("Expected a type after `as`".into());
+        };
+        let target = types::parse_path(first, self.syms, self.it)?;
+        make_cast(value, target)
+    }
+
+    /// Postfix:
+    ///   `value.*`              reads the value behind a pointer
+    ///   `value[i]`             reads element `i` (same as `(value + i).*`)
+    ///   `value.function(args)` calls an extended function, passing `&value` as `self`
+    fn postfix(&mut self, mut lhs: Expr) -> Result<Expr, String> {
+        loop {
+            if self.at(&Dot) {
+                self.it.next();
+
+                if self.at(&MathOperator(MathOp::Star)) {
+                    self.it.next();
+                    lhs = make_deref(lhs)?;
+                    continue;
+                }
+
+                let Some(member) = self.next_identifier() else {
+                    return Err("Expected a function name or `*` after '.'".into());
+                };
+                let owner = lhs.ty();
+                lhs = self.extended_call(&owner, Some(lhs), member)?;
+                continue;
+            }
+
+            if self.at_bracket() {
+                let Some(Block(_, inner)) = self.it.next() else {
+                    unreachable!("at_bracket just saw a block");
+                };
+                let index = self.group(inner)?;
+                lhs = make_index(lhs, index, self.syms)?;
+                continue;
+            }
+
+            break;
+        }
+        Ok(lhs)
+    }
+
+    fn prefix(&mut self, token: &Token) -> Result<Expr, String> {
+        match &token.kind {
+            Keyword(Syscall) => self.syscall(),
+
+            MathOperator(Minus) => make_unary(UnOp::Neg, self.expr(bp::PREFIX)?),
+            Bang => make_unary(UnOp::Not, self.expr(bp::PREFIX)?),
+            BitOperator(AND) => self.address_of(),
+
+            Integer(i) | Hexa(i) | Octal(i) => int_literal(*i, self.syms),
+            Bool(b) => Ok(Expr::Boolean(*b, builtin(self.syms, DEFAULT_BOOL)?)),
+            Str(s) => Ok(Expr::String(
+                s.clone(),
+                builtin(self.syms, DEFAULT_STR_BASE)?.pointer_to(),
+            )),
+            Nil => Ok(Expr::Nil),
+            Float(_) => Err("Morgana doesn't have a float type yet".into()),
+
+            Identifier(id) => self.identifier(token, id),
+
+            _ => Err(format!(
+                "unsupported token in expression: {:?}",
+                token.kind
+            )),
+        }
+    }
+
+    fn address_of(&mut self) -> Result<Expr, String> {
+        let Some(id) = self.next_identifier() else {
+            return Err("Expected an identifier after a & (pointer operator)".into());
+        };
+        let Some(sym) = self.syms.lookup(id) else {
+            return Err(format!("{id} was not found"));
+        };
+        if !can_make_ptr(sym) {
+            return Err(format!("you can't make a pointer of {id}"));
+        }
+        let ty = pointer_ty(id, sym)?;
+        Ok(Expr::Pointer(id.to_string(), ty))
+    }
+
+    fn identifier(&mut self, token: &Token, id: &str) -> Result<Expr, String> {
+        let Some(sym) = self.syms.lookup(id) else {
+            return Err(format!("unknown symbol: '{id}'"));
+        };
+
+        if matches!(sym, BType(_) | TypeAlias(_)) {
+            return self.type_call(token);
+        }
+
+        let is_call = match sym {
+            Variable(_, _, func) => *func,
+            ExternFunction(..) | UnfoldFunction(..) => true,
+            _ => return Err(format!("{id} isn't a valid identifier")),
+        };
+        let ty = symbol_ty(id, sym)?;
+
+        if is_call {
+            self.call(id, ty)
+        } else {
+            Ok(Expr::Var(id.to_string(), ty))
+        }
+    }
+
+    fn type_call(&mut self, token: &Token) -> Result<Expr, String> {
+        let owner = types::parse_path(token, self.syms, self.it)?;
+        let err = || {
+            format!(
+                "`{0}` is a type, not a value; use `{0}.function(...)`",
+                owner.to_string()
+            )
+        };
+
+        let Some(dot) = self.next_token() else {
+            return Err(err());
+        };
+        if dot.kind != Dot {
+            return Err(err());
+        }
+        let Some(member) = self.next_identifier() else {
+            return Err(err());
+        };
+
+        self.extended_call(&owner, None, member)
+    }
+
+    fn extended_call(
+        &mut self,
+        owner: &CarlaType,
+        receiver: Option<Expr>,
+        member: &str,
+    ) -> Result<Expr, String> {
+        let full = abi::extension_symbol(owner, member);
+
+        let Some(sym) = self.syms.lookup(&full) else {
+            return Err(format!(
+                "`{}` has no extended function `{member}` ({full})",
+                owner.to_string()
+            ));
+        };
+
+        if !matches!(
+            sym,
+            Variable(_, _, true) | ExternFunction(..) | UnfoldFunction(..)
+        ) {
+            return Err(format!("`{full}` isn't a function"));
+        }
+
+        let ret = symbol_ty(&full, sym)?;
+        let mut args = self.arguments(&full)?;
+
+        if let Some(receiver) = receiver {
+            args.insert(0, self_ref(receiver)?);
+        }
+
+        Ok(Expr::Call(full, args, ret))
+    }
+
+    fn call(&mut self, id: &str, ret: CarlaType) -> Result<Expr, String> {
+        let args = self.arguments(id)?;
+        Ok(Expr::Call(id.to_string(), args, ret))
+    }
+
+    fn arguments(&mut self, id: &str) -> Result<Vec<Expr>, String> {
+        let err = format!("Invalid {id} call");
+        let Some(Block(Paren, ctx)) = self.it.next() else {
+            return Err(err);
+        };
+
+        let mut args = vec![];
+        let mut sub = ContextIterator::new(ctx.as_slice(), 0);
+        while sub.remaining() > 0 {
+            args.push(Parser::new(self.syms, &mut sub).expr(0)?);
+            match sub.next() {
+                None => break,
+                Some(Common(t)) if matches!(t.kind, Comma) => {}
+                _ => return Err(err),
+            }
+        }
+        Ok(args)
+    }
+
+    fn syscall(&mut self) -> Result<Expr, String> {
+        let err = "Expected a hexadecimal syscall number after `syscall` (e.g. `syscall 0x01(...)`)";
+        let Some(Hexa(n)) = self.next_token().map(|tk| &tk.kind) else {
+            return Err(err.into());
+        };
+        let n = u64::try_from(*n).map_err(|_| format!("invalid syscall number: {n}"))?;
+
+        let args = self.arguments(&format!("syscall {n:#x}"))?;
+        let ret = builtin(self.syms, DEFAULT_SYSCALL_RET)?;
+        Ok(Expr::Syscall(n, args, ret))
     }
 }
 
-fn parse_args(
-    id: &str,
+pub fn parse_postfix(
+    lhs: Expr,
     syms: &mut Symbols,
     it: &mut ContextIterator<'_>,
-) -> Result<Vec<Expr>, String> {
-    let err = format!("Invalid {id} call");
-    let Some(Block(pbb, ctx)) = it.next() else {
-        return Err(err);
-    };
-    if *pbb != Paren {
-        return Err(err);
-    }
-
-    let mut args = vec![];
-    let mut sub = ContextIterator::new(ctx.as_slice(), 0);
-    while sub.remaining() > 0 {
-        args.push(parse_expr(0, syms, &mut sub)?);
-        match sub.next() {
-            None => break,
-            Some(Common(t)) if matches!(t.kind, Comma) => {}
-            _ => return Err(err),
-        }
-    }
-    Ok(args)
+) -> Result<Expr, String> {
+    Parser::new(syms, it).postfix(lhs)
 }
 
 pub fn parse_call(
@@ -794,23 +1082,76 @@ pub fn parse_call(
     syms: &mut Symbols,
     it: &mut ContextIterator<'_>,
 ) -> Result<Expr, String> {
-    let args = parse_args(id, syms, it)?;
-    Ok(Expr::Call(id.to_string(), args, ret))
+    Parser::new(syms, it).call(id, ret)
 }
 
-fn parse_syscall(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<Expr, String> {
-    let err = "Expected a hexadecimal syscall number after `syscall` (e.g. `syscall 0x01(...)`)";
-    let Some(Common(tk)) = it.next() else {
-        return Err(err.into());
-    };
-    let Hexa(n) = &tk.kind else {
-        return Err(err.into());
-    };
-    let n = u64::try_from(*n).map_err(|_| format!("invalid syscall number: {n}"))?;
+pub fn parse(syms: &mut Symbols, iterator: &mut ContextIterator<'_>) -> Result<Compiled, String> {
+    let expr = Parser::new(syms, iterator).expr(0)?;
+    Ok(Compiled::from_expr(expr))
+}
 
-    let args = parse_args(&format!("syscall {n:#x}"), syms, it)?;
-    let ret = builtin(syms, DEFAULT_SYSCALL_RET)?;
-    Ok(Expr::Syscall(n, args, ret))
+pub fn is_integer(ty: &CarlaType) -> bool {
+    is_int_ty(ty)
+}
+
+pub fn range_bounds(
+    start: Compiled,
+    end: Compiled,
+    hint: Option<&CarlaType>,
+) -> Result<(Compiled, Compiled, CarlaType), String> {
+    let (mut a, mut b) = (start.expr().clone(), end.expr().clone());
+
+    if let Some(h) = hint {
+        a = adapt(a, h)?;
+        b = adapt(b, h)?;
+    }
+
+    match (a.is_const(), b.is_const()) {
+        (true, false) => a = adapt(a, &b.ty())?,
+        (false, true) => b = adapt(b, &a.ty())?,
+        _ => {}
+    }
+
+    let (ta, tb) = (a.ty(), b.ty());
+    if !is_int_ty(&ta) || !is_int_ty(&tb) {
+        return Err(format!(
+            "the bounds of a range must be integers, found `{}` and `{}`",
+            ta.to_string(),
+            tb.to_string()
+        ));
+    }
+
+    if morgana_of(&ta) != morgana_of(&tb) {
+        return Err(format!(
+            "mismatched range bounds: `{}` and `{}` (no implicit conversion; use `as`)",
+            ta.to_string(),
+            tb.to_string()
+        ));
+    }
+
+    if let Some(h) = hint {
+        if morgana_of(h) != morgana_of(&ta) {
+            return Err(format!(
+                "the range is `{}` but the loop variable is `{}`",
+                ta.to_string(),
+                h.to_string()
+            ));
+        }
+    }
+
+    let ty = hint.cloned().unwrap_or(ta);
+    Ok((Compiled::from_expr(a), Compiled::from_expr(b), ty))
+}
+
+pub fn require_bool(c: &Compiled, syms: &Symbols, what: &str) -> Result<(), String> {
+    let want = builtin(syms, DEFAULT_BOOL)?.to_string();
+    let got = c.expr().ty().to_string();
+    if got != want {
+        return Err(format!(
+            "{what} must be `{want}`, found `{got}` (compare explicitly, e.g. `x != 0`)"
+        ));
+    }
+    Ok(())
 }
 
 pub fn work(
@@ -818,26 +1159,18 @@ pub fn work(
     syms: &mut Symbols,
     iterator: &mut ContextIterator<'_>,
 ) -> Result<Node, String> {
-    let lhs = parse_prefix(token, syms, iterator)?;
-    let lhs = parse_postfix(lhs, syms, iterator)?;
-    let expr = climb(lhs, 0, syms, iterator)?;
+    let mut parser = Parser::new(syms, iterator);
 
-    let compiled = if expr.is_const() {
-        Compiled::Const(expr)
-    } else {
-        Compiled::Lazy(ExprIterator::new(expr))
-    };
+    let head = parser.prefix(token)?;
+    let expr = parser.continue_expr(head, 0)?;
+    let compiled = Compiled::from_expr(expr);
 
-    let Some(next) = iterator.next() else {
+    let Some(next) = parser.it.next() else {
         return Ok(Expression(compiled, true));
     };
 
-    let err = "Expected ; or , and also maybe EOF, after an expression";
-    let Common(finish) = next else {
-        return Err(err.into());
-    };
-    match finish.kind {
-        Comma | Semi => Ok(Expression(compiled, false)),
-        _ => Err(err.into()),
+    match next {
+        Common(finish) if matches!(finish.kind, Comma | Semi) => Ok(Expression(compiled, false)),
+        _ => Err("Expected ; or , and also maybe EOF, after an expression".into()),
     }
 }

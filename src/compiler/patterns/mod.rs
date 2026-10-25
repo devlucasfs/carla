@@ -2,19 +2,19 @@ use colorize::AnsiColor;
 
 use crate::{
     compiler::{
-        iterator::ContextIterator,
-        node::Node,
-        scanner::{
-            Keywords::{Constexpr, Defer, Extend, Extern, Fn, Let, Unfold, Using},
-            Token,
-            TokenKind::Keyword,
-        },
-        symbols::Symbols,
-    },
-    utils::compiler_outputs::CompilerOutputs,
+        iterator::ContextIterator, node::Node, scanner::{
+            Keywords::{Break, Constexpr, Continue, Defer, Extend, Extern, Fn, For, If, Let, Return, Unfold, Using, While}, Token, TokenKind::Keyword,
+        }, symbols::Symbols,
+    }, utils::compiler_outputs::CompilerOutputs,
 };
 
 pub mod constexpr;
+pub mod conditional;
+pub mod binding;
+pub mod for_loop;
+pub mod while_loop;
+pub mod incdec;
+pub mod body;
 pub mod declaration;
 pub mod defer;
 pub mod expressions;
@@ -22,6 +22,8 @@ pub mod extend;
 pub mod r#extern;
 pub mod lambda;
 pub mod types;
+pub mod ret;
+pub mod jump;
 pub mod unfold;
 pub mod using;
 
@@ -98,6 +100,42 @@ pub fn handler(
             );
         }
 
+        Keyword(For) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "For loop parser",
+                for_loop::work(token, syms, iterator)
+            );
+        }
+
+        Keyword(While) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "While loop parser",
+                while_loop::work(token, syms, iterator)
+            );
+        }
+
+        Keyword(Break) | Keyword(Continue) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "Loop operators parser",
+                jump::work(token, syms, iterator)
+            );
+        }
+
+        Keyword(If) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "If parser",
+                conditional::work(token, syms, iterator)
+            );
+        }
+
         Keyword(Fn) => {
             try_pattern!(
                 iterator,
@@ -113,6 +151,15 @@ pub fn handler(
                 errors,
                 "Defer parser",
                 defer::work(token, syms, iterator)
+            );
+        }
+
+        Keyword(Return) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "Return parser",
+                ret::work(token, syms, iterator)
             );
         }
 

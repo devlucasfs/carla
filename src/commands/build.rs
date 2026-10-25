@@ -83,7 +83,7 @@ impl Command {
             let nodes = visitor::work(&contexts, &mut symbols);
             let libs: Vec<String> = vec!["nashj".into(), "development".into()];
             let code = Codegen::new(nodes.clone()).generate(&mut symbols, None);
-            // println!("\n-------------------- OUTPUT:\n\n{code}");
+            println!("\n-------------------- OUTPUT:\n\n{code}");
             let temp_file = format!("out.{}.morg", uuid::gen_hex(265));
             let morgana_temp = env::temp_dir().join(temp_file);
 

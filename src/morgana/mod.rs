@@ -143,3 +143,59 @@ pub fn rename(ctx: &mut Codegen, lhs: &String, rhs: &String) {
 pub fn ret(ctx: &mut Codegen, data: &String) {
     ctx.append(format!("ret {data}\n"));
 }
+
+/// `dst = alloc ty`
+pub fn ir_alloc(dst: &str, ty: &MorganaType) -> String {
+    format!("{dst} = alloc {}", ty.to_string())
+}
+
+/// `store dst value` — value é um nome ou um inteiro
+pub fn ir_store(dst: &str, value: &str) -> String {
+    format!("store {dst} {value}")
+}
+
+/// Constante: NÃO existe `move 0`. Aloca e guarda (duas linhas).
+pub fn ir_const(dst: &str, ty: &MorganaType, value: &str) -> String {
+    format!("{}\n{}", ir_alloc(dst, ty), ir_store(dst, value))
+}
+
+/// `dst = move src` — cópia de uma variável com outro nome
+pub fn ir_move(dst: &str, src: &str) -> String {
+    format!("{dst} = move {src}")
+}
+
+/// `::Lxxxx::`
+pub fn ir_label(name: &str) -> String {
+    format!("::{name}::")
+}
+
+/// `br L`
+pub fn ir_jmp(name: &str) -> String {
+    format!("br {name}")
+}
+
+/// `brez cond, L` — salta se cond == 0
+pub fn ir_jz(cond: &str, name: &str) -> String {
+    format!("brez {cond}, {name}")
+}
+
+/// `brnz cond, L` — salta se cond != 0
+pub fn ir_jnz(cond: &str, name: &str) -> String {
+    format!("brnz {cond}, {name}")
+}
+
+/// Sem tipo na instrução. Sinal vai no nome do op (sdiv/udiv, slt/ult...),
+/// o tamanho vem das alocações dos operandos.
+pub fn ir_binary(dst: &str, op: &str, signed: bool, a: &str, b: &str) -> String {
+    let needs_sign = matches!(op, "div" | "rem" | "lt" | "le" | "gt" | "ge");
+    let op = if needs_sign {
+        format!("{}{op}", if signed { 's' } else { 'u' })
+    } else {
+        op.to_string()
+    };
+    format!("{dst} = {op} {a}, {b}")
+}
+
+pub fn ir_extract(dst: &str, ty: &MorganaType, src: &str, index: usize) -> String {
+    format!("{dst} = extract {} {src}, {index}", ty.to_string())
+}

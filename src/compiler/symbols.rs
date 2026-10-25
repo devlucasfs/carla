@@ -19,6 +19,7 @@ pub enum Symbol {
 pub struct Symbols {
     stack: Stack<Vec<(String, Symbol)>>,
     extending: Option<CarlaType>,
+    loops: usize,
 }
 
 impl Symbols {
@@ -58,6 +59,19 @@ impl Symbols {
         out
     }
 
+    pub fn enter_loop(&mut self) {
+        self.loops += 1;
+    }
+
+    pub fn leave_loop(&mut self) {
+        self.loops = self.loops.saturating_sub(1);
+    }
+
+    /// True while a `while` / `for` body is being parsed (where `break` / `continue` are valid).
+    pub fn in_loop(&self) -> bool {
+        self.loops > 0
+    }
+
     pub fn leave_extension(&mut self) {
         self.extending = None;
     }
@@ -67,7 +81,7 @@ impl Symbols {
     }
 
     pub fn pop_scope(&mut self) {
-        self.stack.push(vec![]);
+        self.stack.pop();
     }
 
     pub fn lookup<T: ToString>(&self, id: T) -> Option<&Symbol> {

@@ -15,6 +15,25 @@ macro_rules! last {
     };
 }
 
+pub fn infer_declaration(syms: &mut Symbols, prev: Option<&Node>, data: &Node) {
+    let inferred = match data {
+        Expression(expr, _) => Some(expr.expr().ty()),
+        Node::Conditional(c) => c.ty.clone(),
+        _ => None,
+    };
+
+    if let (Some(ty), Some(Node::Declaration(var))) = (inferred, prev) {
+        if var._type.is_none() {
+            let ty = Box::new(ty);
+            let name = &var.identifier;
+            if let Some(Symbol::Variable(_, a, b)) = syms.lookup(name).cloned() {
+                syms.erase(name);
+                syms.push(name, Symbol::Variable(Some(ty), a, b));
+            }
+        }
+    }
+}
+
 pub fn work(ctx: &Vec<Context>, syms: &mut Symbols) -> Vec<Node> {
     let mut nodes = vec![];
     let mut iterators = vec![ContextIterator::new(ctx.as_slice(), 0)];
@@ -38,22 +57,12 @@ pub fn work(ctx: &Vec<Context>, syms: &mut Symbols) -> Vec<Node> {
             Common(token) => {
                 let data = patterns::handler(iterator, syms, &token).unwrap_or(Nop);
 
-                if let (Expression(expr, _), Some(Node::Declaration(var))) = (&data, nodes.last()) {
-                    if var._type.is_none() {
-                        let ty = Box::new(expr.expr().ty());
-                        let name = &var.identifier;
-                        if let Some(Symbol::Variable(_, a, b)) = syms.lookup(name).cloned() {
-                            syms.erase(name);
-                            syms.push(name, Symbol::Variable(Some(ty), a, b));
-                        }
-                    }
-                }
-
+                infer_declaration(syms, nodes.last(), &data);
                 nodes.push(data);
             }
         }
 
-        if last!(iterators).remaining() == 0 {
+        while iterators.last().is_some_and(|i| i.remaining() == 0) {
             iterators.pop();
             if scopes > 0 {
                 scopes -= 1;
@@ -62,5 +71,11 @@ pub fn work(ctx: &Vec<Context>, syms: &mut Symbols) -> Vec<Node> {
         }
     }
 
+    nodes
+}
+
+pub fn block(ctx: &Vec<Context>, syms: &mut Symbols) -> Vec<Node> {
+    let nodes = work(ctx, syms);
+    syms.pop_scope();
     nodes
 }
