@@ -1,7 +1,9 @@
+..@import("nashj");
+
 using string = byte*;
 extend string {
     int len = fn(self) {
-        for let i := 0; i <= 0x7fffffffffffffff; i++ {
+        for let i := 0; true; i++ {
             if self.*[i] != 0 : continue;
             return i;
         }
@@ -16,10 +18,26 @@ extend string {
     }
 }
 
+extern void development_fill = fn(Nashj.Qitah qitah, uint x, y);
 
 @_start
 int main = fn() {
-    let msg := "Hello, world! I love samar!\n" as string;
+    let allocator := Nashj.init(1024 * 5);
+    defer allocator.deinit();
+
+    let ref := allocator.alloc(512);
+    development_fill(ref, 14, 446);
+
+    let raw := ref.to_raw() as string;
+    raw.print();
+
+    for int i = 0; i < 1000000000 * 3; i++ {}
+
+    allocator.deinit();
+    let msg := "freed!\n" as string;
     msg.print();
+
+    while true {}
+
     0
 }

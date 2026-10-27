@@ -1,4 +1,5 @@
-carla-env/target
-target/
+carla-env/target/bin
+/target/
 assets/hi-there-carla.png
 assets/carla-girl.png
+benchmarks/
