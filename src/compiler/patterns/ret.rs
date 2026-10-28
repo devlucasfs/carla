@@ -1,9 +1,12 @@
 use crate::compiler::{
     iterator::ContextIterator,
     nesting::Context::Common,
-    node::Node::{self, Expression, STMTReturn},
+    node::Node::{self, STMTReturn, STMTReturnTuple},
     patterns::expressions,
-    scanner::Token,
+    scanner::{
+        Token,
+        TokenKind::{Comma, Semi},
+    },
     symbols::Symbols,
 };
 
@@ -12,22 +15,26 @@ pub fn work(
     syms: &mut Symbols,
     iterator: &mut ContextIterator<'_>,
 ) -> Result<Node, String> {
-    let err = "Enter a valid expression after return".into();
-    let Some(Common(next)) = iterator.next() else {
-        return Err(err);
-    };
-
-    if !expressions::starts_with(&next.kind) {
-        return Err(err);
+    match iterator.peek() {
+        Some(Common(tk)) if expressions::starts_with(&tk.kind) => {}
+        _ => return Err("Enter a valid expression after return".into()),
     }
 
-    let Ok(Expression(expr, eof)) = expressions::work(next, syms, iterator) else {
-        return Err(err);
-    };
+    let mut values = vec![expressions::parse(syms, iterator)?];
 
-    if eof {
-        return Err("A return is a comptime keyword, it value can't be returned".into());
+    while matches!(iterator.peek(), Some(Common(tk)) if tk.kind == Comma) {
+        iterator.next();
+        values.push(expressions::parse(syms, iterator)?);
     }
 
-    Ok(STMTReturn(expr))
+    match iterator.next() {
+        Some(Common(tk)) if tk.kind == Semi => {}
+        _ => return Err("A return is a comptime keyword, it value can't be returned".into()),
+    }
+
+    if values.len() == 1 {
+        Ok(STMTReturn(values.remove(0)))
+    } else {
+        Ok(STMTReturnTuple(values))
+    }
 }

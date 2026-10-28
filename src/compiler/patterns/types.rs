@@ -89,6 +89,27 @@ impl CarlaType {
         self.base.as_ref().map(|b| b.id.as_str())
     }
 
+    /// The elements of this type when it is a tuple, looking through aliases
+    /// (`using pair = |int, int|;` makes `pair` destructurable too).
+    /// Pointers (`levels > 0`) and arrays (`dim`) of a tuple are not tuples.
+    pub fn tuple_items(&self) -> Option<&[CarlaType]> {
+        if self.levels > 0 || !self.dim.is_empty() {
+            return None;
+        }
+
+        if !self.tuple.is_empty() {
+            return Some(&self.tuple);
+        }
+
+        match &self.base {
+            Some(Base {
+                symbol: TypeAlias(inner),
+                ..
+            }) => inner.tuple_items(),
+            _ => None,
+        }
+    }
+
     pub fn to_string(&self) -> String {
         let mut result = String::new();
 

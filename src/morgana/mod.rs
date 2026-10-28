@@ -144,48 +144,46 @@ pub fn ret(ctx: &mut Codegen, data: &String) {
     ctx.append(format!("ret {data}\n"));
 }
 
-/// `dst = alloc ty`
 pub fn ir_alloc(dst: &str, ty: &MorganaType) -> String {
     format!("{dst} = alloc {}", ty.to_string())
 }
 
-/// `store dst value` — value é um nome ou um inteiro
 pub fn ir_store(dst: &str, value: &str) -> String {
     format!("store {dst} {value}")
 }
 
-/// Constante: NÃO existe `move 0`. Aloca e guarda (duas linhas).
+pub fn ir_pack(dst: &str, ty: &MorganaType, values: &[String]) -> String {
+    format!("{dst} = pack {} {}", ty.to_string(), values.join(", "))
+}
+
+pub fn ir_store_deref(ty: &MorganaType, ptr: &str, value: &str) -> String {
+    format!("storep {} {ptr}, {value}", ty.to_string())
+}
+
 pub fn ir_const(dst: &str, ty: &MorganaType, value: &str) -> String {
     format!("{}\n{}", ir_alloc(dst, ty), ir_store(dst, value))
 }
 
-/// `dst = move src` — cópia de uma variável com outro nome
 pub fn ir_move(dst: &str, src: &str) -> String {
     format!("{dst} = move {src}")
 }
 
-/// `::Lxxxx::`
 pub fn ir_label(name: &str) -> String {
     format!("::{name}::")
 }
 
-/// `br L`
 pub fn ir_jmp(name: &str) -> String {
     format!("br {name}")
 }
 
-/// `brez cond, L` — salta se cond == 0
 pub fn ir_jz(cond: &str, name: &str) -> String {
     format!("brez {cond}, {name}")
 }
-
 /// `brnz cond, L` — salta se cond != 0
 pub fn ir_jnz(cond: &str, name: &str) -> String {
     format!("brnz {cond}, {name}")
 }
 
-/// Sem tipo na instrução. Sinal vai no nome do op (sdiv/udiv, slt/ult...),
-/// o tamanho vem das alocações dos operandos.
 pub fn ir_binary(dst: &str, op: &str, signed: bool, a: &str, b: &str) -> String {
     let needs_sign = matches!(op, "div" | "rem" | "lt" | "le" | "gt" | "ge");
     let op = if needs_sign {
@@ -198,4 +196,73 @@ pub fn ir_binary(dst: &str, op: &str, signed: bool, a: &str, b: &str) -> String 
 
 pub fn ir_extract(dst: &str, ty: &MorganaType, src: &str, index: usize) -> String {
     format!("{dst} = extract {} {src}, {index}", ty.to_string())
+}
+
+/// `dst = ptr_to src` — address of a variable
+pub fn ir_addr_of(dst: &str, src: &str) -> String {
+    format!("{dst} = ptr_to {src}")
+}
+
+/// `dst = deref ty ptr` — load a `ty` from the address `ptr`
+pub fn ir_deref(dst: &str, ty: &MorganaType, ptr: &str) -> String {
+    format!("{dst} = deref {} {ptr}", ty.to_string())
+}
+
+/// Destructures the tuple value `src`: `names[i]` receives the element of type `types[i]`
+/// that lives `offsets[i]` bytes after the start of the tuple. `None` is `_` and emits nothing.
+///
+/// The tuple is kept in a local, its address is taken once (`ptr_to`, parked in a pointer
+/// variable) and every element is
+/// read with plain pointer arithmetic (`add ptr, offset` + `deref`), exactly what `p + n` and
+/// `p.*` produce in expressions. The element is then declared like any other local:
+/// `alloc` + `store` for scalars (variables are slots read with `load`), `move` for a nested tuple.
+pub fn ir_destructure(
+    src: &str,
+    names: &[Option<String>],
+    types: &[MorganaType],
+    offsets: &[i128],
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    if names.iter().all(|n| n.is_none()) {
+        return lines;
+    }
+
+    let id = || crate::utils::uuid::gen_hex(16 * 3);
+
+    let tuple = format!("tp{}", id());
+    let addr = format!("tr{}", id());
+    let base = format!("tb{}", id());
+    lines.push(ir_move(&tuple, src));
+    lines.push(ir_addr_of(&addr, &tuple));
+
+    // The result of a `ptr_to` can't be the operand of an `add` directly (the backend reads it
+    // as a slot, not as an address; same limit as `&x + n` in expressions). So the address is
+    // parked in a pointer variable and `load`ed for every element.
+    lines.push(ir_const(&base, &MorganaType::Ptr, &addr));
+
+    for ((name, ty), offset) in names.iter().zip(types).zip(offsets) {
+        let Some(name) = name else { continue };
+
+        let cur = format!("tc{}", id());
+        lines.push(format!("{cur} = load {base}"));
+
+        // the first element sits at offset 0: the base pointer already is its address
+        let at = if *offset == 0 {
+            cur
+        } else {
+            let a = format!("ta{}", id());
+            lines.push(ir_binary(&a, "add", false, &cur, &offset.to_string()));
+            a
+        };
+
+        let tmp = format!("tv{}", id());
+        lines.push(ir_deref(&tmp, ty, &at));
+        lines.push(match ty {
+            MorganaType::Tuple(_) => ir_move(name, &tmp),
+            _ => ir_const(name, ty, &tmp),
+        });
+    }
+
+    lines
 }

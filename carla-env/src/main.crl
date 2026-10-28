@@ -1,43 +1,22 @@
 ..@import("nashj");
-
-using string = byte*;
-extend string {
-    int len = fn(self) {
-        for let i := 0; true; i++ {
-            if self.*[i] != 0 : continue;
-            return i;
-        }
-
-        syscall! 0x1(1, "String size not found!\n", 24);
-        0
-    }
-
-    void print = fn(self) {
-        let cp := self.*;
-        syscall! 0x1(1, self.*, cp.len());
-    }
-}
-
-extern void development_fill = fn(Nashj.Qitah qitah, uint x, y);
+..@import("extensions");
+..@import("vector");
 
 @_start
 int main = fn() {
-    let allocator := Nashj.init(1024 * 5);
-    defer allocator.deinit();
+    let vec := vector.init(128, 4096);
+    defer vec.deinit();
 
-    let ref := allocator.alloc(512);
-    development_fill(ref, 14, 446);
+    let m := "If i love Samar, that will work in the first attempt\n";
+    vec.push(m, m.strlen());
 
-    let raw := ref.to_raw() as string;
-    raw.print();
+    if var data, err := vec.get(0); err.isnt_empty() {
+        let msg := err.msg();
+        msg.print();
+    }
 
-    for int i = 0; i < 1000000000 * 3; i++ {}
-
-    allocator.deinit();
-    let msg := "freed!\n" as string;
-    msg.print();
-
-    while true {}
+    let content := data as byte*;
+    content.print();
 
     0
 }

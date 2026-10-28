@@ -1,8 +1,9 @@
 use crate::{
     compiler::{
         node::Node::{
-            self, Declaration, Declare, Expression, Extension, Function, Nop, STMTDefer, STMTReturn, Unfoldable,
+            self, Declaration, Declare, Expression, Extension, Function, Nop, STMTDefer, STMTReturn, STMTReturnTuple, Unfoldable,
         }, patterns::{
+            assign::{Assign, Target},
             binding::Binding,
             conditional::Conditional,
             expressions::{BinOp, Compiled, Expr, Operand, Step, StepOp},
@@ -51,13 +52,11 @@ fn binop_name(op: BinOp) -> &'static str {
         BinOp::Le => "le",
         BinOp::Gt => "gt",
         BinOp::Ge => "ge",
-        // `&&` / `||` are lowered to `StepOp::Logical`, never to a plain binary step
         BinOp::LogAnd => "and",
         BinOp::LogOr => "or",
     }
 }
 
-/// The IR has no types on instructions: the sign goes in the op name (`sdiv`/`udiv`...).
 fn is_signed(t: &MorganaType) -> bool {
     !matches!(t, MorganaType::UInteger(_) | MorganaType::Ptr)
 }
@@ -66,8 +65,6 @@ fn is_literal(v: &str) -> bool {
     v.parse::<i128>().is_ok()
 }
 
-/// A variable with real storage: `name = alloc ty` + `store name value`.
-/// Tuples don't fit in a scalar `store`, so they stay an alias (`move`) of the value.
 fn ir_declare(name: &str, ty: &MorganaType, value: &str) -> String {
     match ty {
         MorganaType::Tuple(_) => morgana::ir_move(name, value),
@@ -79,8 +76,6 @@ fn ir_declare(name: &str, ty: &MorganaType, value: &str) -> String {
     }
 }
 
-/// Makes sure a local exists in the symbol table: block bodies are visited at parse time
-/// and their scope is gone by the time the code is generated.
 fn ensure_symbol(sym: &mut Symbols, id: &str, ty: &CarlaType) {
     if sym.lookup(id).is_none() {
         sym.push(id, Variable(Some(Box::new(ty.clone())), true, false));
@@ -116,7 +111,6 @@ impl<'a> MorganaExpr<'a> {
         self.out.push('\n');
     }
 
-    /// `brez`/`brnz` only accept names: a constant goes through alloc + store first.
     fn as_name(&mut self, v: &str, ty: &CarlaType) -> String {
         if !is_literal(v) {
             return v.to_string();
@@ -180,15 +174,13 @@ impl<'a> MorganaExpr<'a> {
             StepOp::Cast(op, from) => {
                 let (v, _) = self.value(op)?;
 
-                if from.to_morgana() != s.ty.to_morgana() {
-                    return Err(format!(
-                        "conversão de `{}` para `{}` muda a largura e o IR ainda não tem instrução para isso",
-                        from.to_string(),
-                        s.ty.to_string()
-                    ));
+                if from.to_morgana() == s.ty.to_morgana() || is_literal(&v) {
+                    (v, s.ty.clone())
+                } else {
+                    let t = self.fresh();
+                    self.line(format!("{t} = cast {} {v}", s.ty.to_morgana().to_string()));
+                    (t, s.ty.clone())
                 }
-
-                (v, s.ty.clone())
             }
 
             StepOp::Deref(op) => {
@@ -199,7 +191,6 @@ impl<'a> MorganaExpr<'a> {
                 (t, s.ty.clone())
             }
 
-            // `dst = add a, b` — no type: the size comes from the operands' allocations
             StepOp::Binary(op, a, b) => {
                 let (x, tx) = self.value(a)?;
                 let (y, _) = self.value(b)?;
@@ -216,8 +207,6 @@ impl<'a> MorganaExpr<'a> {
                 (t, s.ty.clone())
             }
 
-            // `lhs && rhs` / `lhs || rhs`: the right side only runs when it can change the result.
-            // The result is a real allocation: both paths `store` into it.
             StepOp::Logical(op, lhs, rhs_steps, rhs) => {
                 let (l, tl) = self.value(lhs)?;
                 let cond = self.as_name(&l, &tl);
@@ -272,8 +261,6 @@ impl<'a> MorganaExpr<'a> {
                 .cloned()
                 .ok_or_else(|| "temporário usado antes de ser definido".to_string()),
 
-            // `load` is just a name for the variable's slot (no copy): fine for reading
-            // right away, the value is always consumed by the very next instruction.
             Operand::Var(name) => {
                 let ty = match self.syms.lookup(&name).unwrap() {
                     Variable(Some(ty), _, _) => ty.as_ref().clone(),
@@ -534,6 +521,7 @@ impl Codegen {
                 (Node::While(w), _) => self.while_loop(sym, &w),
                 (Node::For(f), _) => self.for_loop(sym, &f),
                 (Node::IncDec(step), _) => self.incdec(&step),
+                (Node::Assign(a), _) => self.assign(sym, &a),
 
                 (STMTReturn(expr), _) => {
                     let mut s = sym.clone();
@@ -556,6 +544,52 @@ impl Codegen {
                     if ret_t.to_morgana() != Void {
                         morgana::ret(self, &result);
                     }
+                }
+
+                (STMTReturnTuple(exprs), _) => {
+                    let Some(ret_t) = ret.clone() else {
+                        CompilerOutputs::fatal("`return` outside of a function");
+                        unreachable!();
+                    };
+
+                    let irty = ret_t.to_morgana();
+                    let MorganaType::Tuple(expected) = &irty else {
+                        CompilerOutputs::fatal(format!(
+                            "You can't return a tuple, because the expected type is {}",
+                            ret_t.to_string()
+                        ));
+                        unreachable!();
+                    };
+
+                    if expected.len() != exprs.len() {
+                        CompilerOutputs::fatal(format!(
+                            "You returned {} values, but the expected type {} has {}",
+                            exprs.len(),
+                            ret_t.to_string(),
+                            expected.len()
+                        ));
+                    }
+
+                    let mut names = Vec::with_capacity(exprs.len());
+                    for (i, (expr, want)) in exprs.iter().zip(expected).enumerate() {
+                        let (value, ty) = self.eval(sym, expr);
+
+                        if ty.to_morgana() != *want {
+                            CompilerOutputs::fatal(format!(
+                                "Tuple element {i}: you can't return a {}, because the expected type is {}",
+                                ty.to_string(),
+                                want.to_string()
+                            ));
+                        }
+
+                        names.push(self.as_name(&value, &ty));
+                    }
+
+                    let result = fresh_name("t");
+                    self.emit(morgana::ir_pack(&result, &irty, &names));
+
+                    make_defers(self, sym, &mut defers);
+                    morgana::ret(self, &result);
                 }
 
                 (Node::Break, _) => {
@@ -720,7 +754,6 @@ impl Codegen {
         }
     }
 
-    /// Evaluates the value of a `let`/`var` header binding and distributes it over the names.
     fn bind(&mut self, sym: &Symbols, b: &Binding) {
         let (value, _) = self.eval(sym, &b.value);
 
@@ -731,10 +764,9 @@ impl Codegen {
             return;
         }
 
-        for (i, (name, ty)) in b.names.iter().zip(&b.types).enumerate() {
-            if let Some(name) = name {
-                self.emit(morgana::ir_extract(name, &ty.to_morgana(), &value, i));
-            }
+        let types: Vec<MorganaType> = b.types.iter().map(|t| t.to_morgana()).collect();
+        for line in morgana::ir_destructure(&value, &b.names, &types, &b.offsets) {
+            self.emit(line);
         }
     }
 
@@ -820,15 +852,29 @@ impl Codegen {
     }
 
     fn for_loop(&mut self, sym: &mut Symbols, f: &ForLoop) {
+        if let ForLoop::C { bind: Some(b), .. } = f {
+            if !b.scoped {
+                Self::declare_binding(sym, b);
+            }
+        }
+
         sym.push_scope();
 
         match f {
             ForLoop::C {
                 init,
+                bind,
                 cond,
                 step,
                 body,
             } => {
+                if let Some(b) = bind {
+                    if b.scoped {
+                        Self::declare_binding(sym, b);
+                    }
+                    self.bind(sym, b);
+                }
+
                 let code = self.sub(sym, init, false, None);
                 self.append(code);
 
@@ -847,7 +893,11 @@ impl Codegen {
 
                 self.emit(morgana::ir_label(&cont));
                 if let Some(step) = step {
-                    self.incdec(step);
+                    match step.as_ref() {
+                        Node::IncDec(s) => self.incdec(s),
+                        Node::Assign(a) => self.assign(sym, a),
+                        _ => {}
+                    }
                 }
 
                 self.emit(morgana::ir_jmp(&top));
@@ -922,6 +972,20 @@ impl Codegen {
         }
 
         sym.pop_scope();
+    }
+
+    fn assign(&mut self, sym: &Symbols, a: &Assign) {
+        match &a.target {
+            Target::Var(name) => {
+                let (value, _) = self.eval(sym, &a.value);
+                self.emit(morgana::ir_store(name, &value));
+            }
+            Target::Deref(ptr) => {
+                let (addr, _) = self.eval(sym, ptr);
+                let (value, _) = self.eval(sym, &a.value);
+                self.emit(morgana::ir_store_deref(&a.ty.to_morgana(), &addr, &value));
+            }
+        }
     }
 
     fn incdec(&mut self, s: &IncDec) {

@@ -3,9 +3,8 @@ use crate::compiler::{
     nesting::Context::{Block, Common},
     node::Node::{self, InternalType},
     patterns::{
-        self, binding, body,
+        self, assign, binding, body,
         expressions::{self, Compiled},
-        incdec::{self, IncDec},
         types::{self, CarlaType},
     },
     scanner::{
@@ -27,8 +26,12 @@ pub enum ForLoop {
     C {
         init: Vec<Node>,
         cond: Option<Compiled>,
-        step: Option<IncDec>,
+        step: Option<Box<Node>>,
         body: Vec<Node>,
+        /// `for [let|var a, b := value;] cond; step { }`: the same Go-style binding as `if` and
+        /// `while`, but evaluated ONCE, before the first iteration. `let` names live in the loop
+        /// scope, `var` names in the parent scope (they outlive the loop).
+        bind: Option<binding::Binding>,
     },
     Range {
         var: Option<String>,
@@ -61,15 +64,33 @@ pub fn work(
     syms: &mut Symbols,
     it: &mut ContextIterator<'_>,
 ) -> Result<Node, String> {
+    let hoisted = match binding::peek(it) {
+        Some(false) => Some(binding::work(syms, it)?),
+        _ => None,
+    };
+
     syms.push_scope();
-    let out = parse(syms, it);
+    let out = parse(syms, it, hoisted);
     syms.pop_scope();
     out.map(Node::For)
 }
 
-fn parse(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<ForLoop, String> {
+fn parse(
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+    hoisted: Option<binding::Binding>,
+) -> Result<ForLoop, String> {
+    if hoisted.is_some() {
+        return c_style_loop(syms, it, hoisted);
+    }
+
     if let Some(var) = range_variable(syms, it)? {
         return range(syms, it, Some(var));
+    }
+
+    if binding::peek(it).is_some() {
+        let b = binding::work(syms, it)?;
+        return c_style_loop(syms, it, Some(b));
     }
 
     let c_style = match it.peek() {
@@ -78,7 +99,7 @@ fn parse(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<ForLoop, St
     };
 
     if c_style {
-        c_style_loop(syms, it)
+        c_style_loop(syms, it, None)
     } else {
         range(syms, it, None)
     }
@@ -166,8 +187,12 @@ fn range(
     })
 }
 
-fn c_style_loop(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<ForLoop, String> {
-    let init = init(syms, it)?;
+fn c_style_loop(
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+    bind: Option<binding::Binding>,
+) -> Result<ForLoop, String> {
+    let init = if bind.is_some() { vec![] } else { init(syms, it)? };
     let cond = condition(syms, it)?;
     let step = step(syms, it)?;
     let body = body::looped(syms, it)?;
@@ -177,6 +202,7 @@ fn c_style_loop(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<ForL
         cond,
         step,
         body,
+        bind,
     })
 }
 
@@ -226,7 +252,7 @@ fn condition(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<Option<
     }
 }
 
-fn step(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<Option<IncDec>, String> {
+fn step(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<Option<Box<Node>>, String> {
     match it.peek() {
         Some(Common(tk)) if tk.kind == Colon => return Ok(None),
         Some(Block(Brace, _)) => return Ok(None),
@@ -234,8 +260,8 @@ fn step(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<Option<IncDe
     }
 
     let Some(Common(first)) = it.next() else {
-        return Err("Expected a step (`i++`) or the body of the `for`".into());
+        return Err("Expected a step (`i++`, `i += 2`...) or the body of the `for`".into());
     };
 
-    incdec::parse(first, syms, it).map(Some)
+    assign::parse(first, syms, it).map(|node| Some(Box::new(node)))
 }

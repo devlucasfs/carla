@@ -98,7 +98,7 @@ impl Symbols {
 
     pub fn push<T: ToString>(&mut self, id: T, sym: Symbol) {
         let Some(top) = self.stack.last_mut() else {
-            CompilerOutputs::fatal_internal("Can't reach the symbol stack top");
+            CompilerOutputs::fatal_internal(format!("Can't reach the symbol stack top ({})", id.to_string()));
             unreachable!()
         };
 

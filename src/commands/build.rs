@@ -63,7 +63,7 @@ impl Command {
             unreachable!()
         };
 
-        // println!("{scan}");
+        println!("{scan}");
 
         let mut scanner = Scanner::new(scan);
         scanner.read();

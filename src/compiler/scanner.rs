@@ -11,7 +11,8 @@ use crate::{
         MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star},
         PBB::{Brace, Bracket, Paren},
         TokenKind::{
-            And, Arrow, Bang, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, Dec, Dot,
+            And, Arrow, Bang, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, CompoundAssign,
+            Dec, Dot,
             Float, Hexa, Identifier, Inc, Integer, Keyword, MathOperator, Nil, Octal, Open, Or,
             RunaString, Semi, Sign, Walrus, Wild,
         },
@@ -67,6 +68,16 @@ pub enum BinOP {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum AssignOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    And,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum BitOp {
     LSH,
     RSH,
@@ -86,6 +97,7 @@ pub enum PBB {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     BinaryOperator(BinOP),
+    CompoundAssign(AssignOp),
     MathOperator(MathOp),
     RunaString(String),
     Identifier(String),
@@ -208,7 +220,6 @@ impl Scanner {
             }
 
             match ch {
-                // FAZER O DEC E O INC
                 b'-' if second == b'-'
                     && [Semi, Open(Brace), Comma]
                         .contains(&self.tokens.last().unwrap_or(SEMI_TOKEN).kind) =>
@@ -271,7 +282,31 @@ impl Scanner {
                     self.push(Arrow)
                 }
 
-                // `--` after `;` `{` `,` is a comment (handled first); anywhere else it is a decrement
+                b'+' if second == b'=' => {
+                    i += 1;
+                    self.push(CompoundAssign(AssignOp::Add))
+                }
+                b'-' if second == b'=' => {
+                    i += 1;
+                    self.push(CompoundAssign(AssignOp::Sub))
+                }
+                b'*' if second == b'=' => {
+                    i += 1;
+                    self.push(CompoundAssign(AssignOp::Mul))
+                }
+                b'/' if second == b'=' => {
+                    i += 1;
+                    self.push(CompoundAssign(AssignOp::Div))
+                }
+                b'%' if second == b'=' => {
+                    i += 1;
+                    self.push(CompoundAssign(AssignOp::Rem))
+                }
+                b'&' if second == b'=' => {
+                    i += 1;
+                    self.push(CompoundAssign(AssignOp::And))
+                }
+
                 b'-' if second == b'-' => {
                     i += 1;
                     self.push(Dec)

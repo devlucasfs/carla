@@ -3,11 +3,12 @@ use colorize::AnsiColor;
 use crate::{
     compiler::{
         iterator::ContextIterator, node::Node, scanner::{
-            Keywords::{Break, Constexpr, Continue, Defer, Extend, Extern, Fn, For, If, Let, Return, Unfold, Using, While}, Token, TokenKind::Keyword,
+            Keywords::{Break, Constexpr, Continue, Defer, Extend, Extern, Fn, For, If, Let, Return, Unfold, Using, While}, Token, TokenKind::{Identifier, Keyword},
         }, symbols::Symbols,
     }, utils::compiler_outputs::CompilerOutputs,
 };
 
+pub mod assign;
 pub mod constexpr;
 pub mod conditional;
 pub mod binding;
@@ -46,6 +47,15 @@ pub fn handler(
     token: &Token,
 ) -> Option<Node> {
     let mut errors = vec![];
+
+    if matches!(token.kind, Identifier(_)) && assign::follows(iterator) {
+        try_pattern!(
+            iterator,
+            errors,
+            "Assignment parser",
+            assign::work(token, syms, iterator)
+        );
+    }
 
     if types::starts_with(&token.kind) {
         try_pattern!(

@@ -20,12 +20,10 @@ use crate::compiler::{
 /// With a single name it binds the whole value, tuple or not.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Binding {
-    /// `let`: the names live in the `if`/`while` scope (condition, bodies, `else`).
-    /// `var`: the names are declared in the parent scope and outlive the statement.
     pub scoped: bool,
-    /// symbol names (`None` is `_`)
     pub names: Vec<Option<String>>,
     pub types: Vec<CarlaType>,
+    pub offsets: Vec<i128>,
     pub value: Compiled,
 }
 
@@ -86,21 +84,32 @@ pub fn work(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<Binding,
             return Err("the value of this binding has no type (it returns nothing)".into());
         }
         vec![ty]
-    } else if ty.tuple.is_empty() {
-        return Err(format!(
-            "`{}` isn't a tuple: it can't be destructured into {} names",
-            ty.to_string(),
-            names.len()
-        ));
-    } else if ty.tuple.len() != names.len() {
-        return Err(format!(
-            "`{}` has {} elements but the binding has {} names",
-            ty.to_string(),
-            ty.tuple.len(),
-            names.len()
-        ));
     } else {
-        ty.tuple.clone()
+        // `tuple_items` looks through aliases: `using pair = |int, int|;` destructures too
+        let Some(items) = ty.tuple_items() else {
+            return Err(format!(
+                "`{}` isn't a tuple: it can't be destructured into {} names",
+                ty.to_string(),
+                names.len()
+            ));
+        };
+
+        if items.len() != names.len() {
+            return Err(format!(
+                "`{}` has {} elements but the binding has {} names",
+                ty.to_string(),
+                items.len(),
+                names.len()
+            ));
+        }
+
+        items.to_vec()
+    };
+
+    let offsets = if names.len() == 1 {
+        vec![]
+    } else {
+        expressions::tuple_offsets(&types)?
     };
 
     // keep the symbol names: they differ from the source ones inside an `extend`
@@ -116,6 +125,7 @@ pub fn work(syms: &mut Symbols, it: &mut ContextIterator<'_>) -> Result<Binding,
         scoped,
         names: declared,
         types,
+        offsets,
         value,
     })
 }

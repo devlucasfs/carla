@@ -176,7 +176,7 @@ impl Compiled {
         }
     }
 
-    fn from_expr(expr: Expr) -> Self {
+    pub fn from_expr(expr: Expr) -> Self {
         if expr.is_const() {
             Compiled::Const(expr)
         } else {
@@ -702,7 +702,89 @@ fn make_ptr_offset(op: BinOp, ptr: Expr, off: Expr, syms: &Symbols) -> Result<Ex
     Ok(Expr::Binary(op, Box::new(ptr), Box::new(scaled), pty))
 }
 
-/// `base[index]` == `(base + index).*`
+fn align_up(v: i128, a: i128) -> i128 {
+    (v + a - 1) / a * a
+}
+
+/// (size, alignment) in bytes of a primitive.
+fn layout_morgana(m: &MorganaType) -> Result<(i128, i128), String> {
+    match m {
+        MorganaType::Integer(b) | MorganaType::UInteger(b) if *b > 0 && *b % 8 == 0 => {
+            let size = (*b / 8) as i128;
+            Ok((size, size.min(8)))
+        }
+        MorganaType::Integer(b) | MorganaType::UInteger(b) => {
+            Err(format!("a {b}-bit integer doesn't have a whole number of bytes"))
+        }
+        MorganaType::Ptr => Ok((8, 8)),
+        MorganaType::Void => Err("`void` has no size".into()),
+        MorganaType::Tuple(items) => {
+            let (mut offset, mut max) = (0i128, 1i128);
+            for item in items {
+                let (s, a) = layout_morgana(item)?;
+                offset = align_up(offset, a) + s;
+                max = max.max(a);
+            }
+            Ok((align_up(offset, max), max))
+        }
+    }
+}
+
+fn layout(t: &CarlaType) -> Result<(i128, i128), String> {
+    if t.levels > 0 {
+        return Ok((8, 8));
+    }
+
+    let (size, align) = if !t.tuple.is_empty() {
+        let (mut offset, mut max) = (0i128, 1i128);
+        for item in &t.tuple {
+            let (s, a) = layout(item)?;
+            offset = align_up(offset, a)
+                .checked_add(s)
+                .ok_or("compile-time overflow in sizeof")?;
+            max = max.max(a);
+        }
+        (align_up(offset, max), max)
+    } else if let Some(base) = &t.base {
+        match &base.symbol {
+            BType(m) => layout_morgana(m)?,
+            TypeAlias(alias) => layout(alias.as_ref())?,
+            _ => return Err(format!("`{}` isn't a type", t.to_string())),
+        }
+    } else {
+        return Err(format!("`{}` has no size", t.to_string()));
+    };
+
+    let mut total = size;
+    for dim in &t.dim {
+        if *dim < 0 {
+            return Err(format!("invalid array dimension in `{}`", t.to_string()));
+        }
+        total = total
+            .checked_mul(*dim)
+            .ok_or("compile-time overflow in sizeof")?;
+    }
+
+    Ok((total, align))
+}
+
+/// Byte offset of every element of a tuple, with the same layout rule `sizeof` uses
+/// (each element aligned to its own alignment, in declaration order).
+/// Destructuring reads element `i` at `&tuple + offsets[i]`.
+pub fn tuple_offsets(items: &[CarlaType]) -> Result<Vec<i128>, String> {
+    let mut offsets = Vec::with_capacity(items.len());
+    let mut offset = 0i128;
+
+    for item in items {
+        let (size, align) = layout(item)?;
+        offset = align_up(offset, align);
+        offsets.push(offset);
+        offset += size;
+    }
+
+    Ok(offsets)
+}
+
 fn make_index(base: Expr, index: Expr, syms: &Symbols) -> Result<Expr, String> {
     let ty = base.ty();
 
@@ -719,9 +801,12 @@ fn make_index(base: Expr, index: Expr, syms: &Symbols) -> Result<Expr, String> {
 fn self_ref(receiver: Expr) -> Result<Expr, String> {
     match receiver {
         Expr::Var(name, ty) => Ok(Expr::Pointer(name, ty.pointer_to())),
+        // `p.*.f()` / `p[i].f()`: `&(*p)` is just `p`. Nothing is copied, so `f` works on the
+        // real object (a `let x := p.*` would work on a copy of it).
+        Expr::Deref(ptr, _) => Ok(*ptr),
         other => Err(format!(
             "cannot take a reference to a temporary value of type `{}` to use as `self`; \
-             store it in a variable first",
+             store it in a variable first (or call it on a pointer: `p.*.f()`)",
             other.ty().to_string()
         )),
     }
@@ -799,6 +884,30 @@ impl<'a, 'c> Parser<'a, 'c> {
             Some(Common(tk)) => BinOp::from_token(&tk.kind),
             _ => None,
         }
+    }
+
+    fn sizeof(&mut self) -> Result<Expr, String> {
+        let err = "Expected a type between parentheses after `sizeof`, e.g. `sizeof(int)`";
+
+        let Some(Block(Paren, ctx)) = self.it.next() else {
+            return Err(err.into());
+        };
+
+        let mut sub = ContextIterator::new(ctx.as_slice(), 0);
+        let Some(Common(first)) = sub.next() else {
+            return Err(err.into());
+        };
+
+        let Node::InternalType(ty) = types::work(first, self.syms, &mut sub)? else {
+            return Err(err.into());
+        };
+
+        if sub.remaining() > 0 {
+            return Err("leftover tokens inside `sizeof(...)`".into());
+        }
+
+        let (size, _) = layout(&ty)?;
+        int_literal(size, self.syms)
     }
 
     fn next_token(&mut self) -> Option<&'c Token> {
@@ -955,6 +1064,10 @@ impl<'a, 'c> Parser<'a, 'c> {
     }
 
     fn identifier(&mut self, token: &Token, id: &str) -> Result<Expr, String> {
+        if id == "sizeof" {
+            return self.sizeof();
+        }
+
         let Some(sym) = self.syms.lookup(id) else {
             return Err(format!("unknown symbol: '{id}'"));
         };
@@ -1152,6 +1265,102 @@ pub fn require_bool(c: &Compiled, syms: &Symbols, what: &str) -> Result<(), Stri
         ));
     }
     Ok(())
+}
+
+/// Parses something that can be assigned to: a variable (`x`), `p.*` or `p[i]`.
+/// It stops right after the postfix operators, so `raw + i` is NOT a place.
+/// `p[i]` / `p.*` come back as `Expr::Deref(pointer, element_type)`.
+pub fn parse_place(
+    token: &Token,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Expr, String> {
+    let mut parser = Parser::new(syms, it);
+    let head = parser.prefix(token)?;
+    parser.postfix(head)
+}
+
+/// Calls run again when a place is read AND written (`p[f()] += 1`), so they're refused there.
+fn has_side_effects(e: &Expr) -> bool {
+    match e {
+        Expr::Call(..) | Expr::Syscall(..) => true,
+        Expr::Unary(_, x, _) | Expr::Cast(x, _) | Expr::Deref(x, _) => has_side_effects(x),
+        Expr::Binary(_, l, r, _) => has_side_effects(l) || has_side_effects(r),
+        _ => false,
+    }
+}
+
+fn place_name(place: &Expr) -> String {
+    match place {
+        Expr::Var(n, _) => format!("`{n}`"),
+        _ => "this place".into(),
+    }
+}
+
+/// Parses the right-hand side of an assignment to `place` (see [`parse_place`]).
+///
+/// * `op == None`      -> `place = <rhs>`
+/// * `op == Some(op)`  -> `place <op>= <rhs>`, built as `place <op> <rhs>`, so it gets the same
+///   type checks, literal adaptation and pointer arithmetic as any other expression.
+///
+/// The type of the final value must be exactly the type of the place.
+pub fn assignment(
+    place: &Expr,
+    op: Option<BinOp>,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Compiled, String> {
+    let ty = place.ty();
+    let rhs = Parser::new(syms, it).expr(0)?;
+
+    let value = match op {
+        None => adapt(rhs, &ty)?,
+        Some(op) => {
+            if has_side_effects(place) {
+                return Err(
+                    "the left side of a compound assignment has a call in it, which would run \
+                     twice; store the call's result in a variable first"
+                        .into(),
+                );
+            }
+            make_binary(op, place.clone(), rhs, syms)?
+        }
+    };
+
+    let nil_in_ptr = matches!(value, Expr::Nil) && is_ptr(&ty);
+
+    let (want, got) = (ty.to_string(), value.ty().to_string());
+    if want != got && !nil_in_ptr {
+        return Err(format!(
+            "can't assign a `{got}` to {}, which is a `{want}` (no implicit conversion; use `as`)",
+            place_name(place)
+        ));
+    }
+
+    Ok(Compiled::from_expr(value))
+}
+
+pub fn step(place: &Expr, increment: bool, syms: &Symbols) -> Result<Compiled, String> {
+    let ty = place.ty();
+
+    if !is_int_ty(&ty) {
+        return Err(format!(
+            "can't apply ++/-- to {}: `{}` isn't an integer type",
+            place_name(place),
+            ty.to_string()
+        ));
+    }
+    if has_side_effects(place) {
+        return Err(
+            "the place in `++`/`--` has a call in it, which would run twice; store the call's \
+             result in a variable first"
+                .into(),
+        );
+    }
+
+    let op = if increment { BinOp::Add } else { BinOp::Sub };
+    let value = make_binary(op, place.clone(), Expr::Integer(1, ty), syms)?;
+    Ok(Compiled::from_expr(value))
 }
 
 pub fn work(

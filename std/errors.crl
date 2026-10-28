@@ -1,0 +1,20 @@
+using error = |bool, byte*|;
+extend error {
+    error from = fn(byte* str) {
+        return true, str;
+    }
+
+    error make = fn() {
+        return false, "";
+    }
+
+    byte* msg = fn(self) {
+        if var _, msg := self.*; true {}
+        msg
+    }
+
+    bool isnt_empty = fn(self) {
+        if var b, _ := self.*; true {}
+        b
+    }
+}
