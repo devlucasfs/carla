@@ -1,63 +1,78 @@
+..@import("stream");
 ..@import("errors");
+..@import("mem");
 
-using vector = |Nashj, uint, uint, Nashj.Qitah, Nashj.Qitah, Nashj.Qitah|;
+using vector = |Nashj, uint, uint, Nashj.Qitah, Nashj.Qitah|;
 extend vector {
-    vector init = fn(uint headers_sz, bytes_sz) {
-        let headers_size := headers_sz * sizeof(generic_ptr);
-        let bytes_size   := bytes_sz;
-        let size         := headers_size + sizeof(word) + bytes_size;
+    vector init = fn(uint capacity) {
+        let blocks_size := capacity * sizeof(generic_ptr);
+        int size         = blocks_size as int + sizeof(uword) + 32;
 
-        let allocator    := Nashj.init(size as uint);
+        let allocator := Nashj.init(size as uint);
 
-        let headers      := allocator.alloc(headers_size as uint);
-        let length       := allocator.alloc(sizeof(uword));
-        let bytes        := allocator.alloc(bytes_size as uint - 16);
+        let length := allocator.alloc(sizeof(uword));
+        let mem := allocator.alloc(blocks_size as uint);
 
-        return allocator, size, headers_sz, length, headers, bytes;
-    }
-
-    void deinit = fn(self) {
-        if var nashj, _, _, _, _, _ := self.*; true {}
-        nashj.deinit();
-    }
-
-    uint allocation_size = fn(self) {
-        if var _, size, _, _, _, _ := self.*; true {}
-        size
-    }
-
-    void push = fn(self, byte* raw, uint size) {
-        if var _, _, headers_size, length, headers, bytes := self.*; true {}
-        let word_addr := length.to_raw() as uword*;
-        word_addr.* += 1;
-
-        let headers_ptr := headers.to_raw() as generic_ptr**;
-
-        let ptr := bytes.to_raw();
-
-        for let i := 0 as uint; i < size; i++ {
-            ptr[i] = raw[i];
-        }
-
-        headers_ptr[word_addr.* as int - 1] = ptr as generic_ptr*;
+        return allocator, size as uint, capacity, length, mem;
     }
 
     uint size = fn(self) {
-        if var _, _, _, length, _, _ := self.*; true {}
+        if var _, _, _, length, _ := self.*; true {}
         let word_addr := length.to_raw() as uword*;
         word_addr.* as uint
     }
 
-    @uncert(generic_ptr) get = fn(self, uint i) {
-        if var _, _, _, length, headers, _ := self.*; true {}
+    void deinit = fn(self) {
+        if var nashj, _, _, _, mem := self.*; true {}
+        let memptr := mem.to_raw() as SafeHeap.Cell*;
 
-        let word_addr   := length.to_raw() as uword*;
-        let headers_ptr := headers.to_raw() as generic_ptr*;
-
-        if i >= vector.size(self) {
-            return nullptr, error.from("index can't be above or equal than the vector size.");
+        for uint i : 0..vector.size(self) {
+            SafeHeap.dump(memptr[i]);
         }
 
-        return headers_ptr[i], error.make();
+        nashj.deinit();
+    }
+
+    uint allocation_size = fn(self) {
+        if var _, size, _, _, _ := self.*; true {}
+        size
+    }
+
+    error push = fn(self, stream data) {
+        if var _, _, capacity, length, mem := self.*; true {}
+
+        let len_addr := length.to_raw() as uword*;
+        let index := len_addr.* as uint;
+        if capacity <= index
+            : return error.from("Vector is already full");
+
+        len_addr.* += 1;
+
+        if var size, raw := data; size == 0
+            : return error.from("Invalid stream received: Size equals to 0\n");
+
+        let into     := SafeHeap.alloc(size);
+        let into_raw := into.to_raw();
+
+        for uint i : 0..size {
+            into_raw[i] = raw[i];
+        }
+
+        let memptr := mem.to_raw() as SafeHeap.Cell*;
+        memptr[index] = into;
+
+        error.make()
+    }
+
+    @uncert(stream) get = fn(self, uint i) {
+        if var _, _, _, length, mem := self.*; true {}
+
+        if i >= vector.size(self)
+            : return stream.make(), error.from("index can't be greater or equal to the vector size.\n");
+
+        let memptr := mem.to_raw() as SafeHeap.Cell*;
+        let cell := memptr[i];
+
+        return stream.from(cell.size(), cell.to_raw()), error.make();
     }
 }

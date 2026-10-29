@@ -1,0 +1,33 @@
+..@import("errors");
+
+extern void __carla_abi_corelib_rmem_func__bookkeeping_set = fn(uint size);
+extern void __carla_abi_corelib_rmem_func__bookkeeping_dump = fn();
+extern void __carla_abi_corelib_rmem_func__dump = fn(generic_ptr ptr);
+extern generic_ptr __carla_abi_corelib_rmem_func__alloc = fn(uint size);
+
+using SafeHeap = |_|;
+extend SafeHeap {
+    using Cell = generic_ptr;
+    void init = fn(uint size) -> __carla_abi_corelib_rmem_func__bookkeeping_set(size);
+    void deinit = fn() -> __carla_abi_corelib_rmem_func__bookkeeping_dump();
+
+    void dump = fn(SafeHeap.Cell ref)
+        -> __carla_abi_corelib_rmem_func__dump(ref as generic_ptr);
+
+    SafeHeap.Cell alloc = fn(uint size)
+        -> __carla_abi_corelib_rmem_func__alloc(size) as SafeHeap.Cell;
+}
+
+extern byte* __carla_abi_corelib_rmem_func__makeraw = fn(SafeHeap.Cell ref);
+extern uint __carla_abi_corelib_rmem_func__size = fn(SafeHeap.Cell ref);
+extend SafeHeap.Cell {
+    byte* to_raw = fn(self) {
+        let ptr := self as SafeHeap.Cell*;
+        __carla_abi_corelib_rmem_func__makeraw(ptr.*)
+    }
+
+    uint size = fn(self) {
+        let ptr := self as SafeHeap.Cell*;
+        __carla_abi_corelib_rmem_func__size(ptr.*)
+    }
+}

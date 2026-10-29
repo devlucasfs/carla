@@ -1,0 +1,16 @@
+using stream = |uint, byte*|;
+
+extend stream {
+    stream from = fn(uint sz, byte* ptr) {
+        return sz, ptr;
+    }
+
+    stream make = fn() {
+        return 0 as uint, "";
+    }
+
+    stream from_str = fn(byte* str) {
+        for var size := 0 as uint; str[size] != 0; size++ {}
+        return size, str;
+    }
+}

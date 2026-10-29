@@ -8,6 +8,11 @@ extend error {
         return false, "";
     }
 
+    void panic = fn(self) {
+        if var _, msg := self.*; true {}
+        msg.eprint();
+    }
+
     byte* msg = fn(self) {
         if var _, msg := self.*; true {}
         msg

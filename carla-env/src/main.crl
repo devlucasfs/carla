@@ -1,22 +1,29 @@
-..@import("nashj");
 ..@import("extensions");
+..@import("nashj");
 ..@import("vector");
+..@import("mem");
 
 @_start
 int main = fn() {
-    let vec := vector.init(128, 4096);
+    SafeHeap.init(4096);
+    defer SafeHeap.deinit();
+
+    let vec := vector.init(1024);
     defer vec.deinit();
 
-    let m := "If i love Samar, that will work in the first attempt\n";
-    vec.push(m, m.strlen());
-
-    if var data, err := vec.get(0); err.isnt_empty() {
-        let msg := err.msg();
-        msg.print();
+    for uint i : 0..12 {
+        if i % 2 == 0 {
+            vec.push(stream.from_str("Hello, world!\n"));
+            continue;
+        }
+        vec.push(stream.from_str("I love Samar!\n"));
     }
 
-    let content := data as byte*;
-    content.print();
+    for uint i : 0..vec.size() {
+        if var data, err := vec.get(i); err.isnt_empty() { err.panic(); }
+        if var _, c := data; true {}
+        c.print();
+    }
 
     0
 }

@@ -221,7 +221,7 @@ impl Scanner {
 
             match ch {
                 b'-' if second == b'-'
-                    && [Semi, Open(Brace), Comma]
+                    && [Semi, Open(Brace), Close(Brace), Comma]
                         .contains(&self.tokens.last().unwrap_or(SEMI_TOKEN).kind) =>
                 {
                     for j in (i + 2)..self.bytes.len() {

@@ -163,7 +163,7 @@ using Nashj = |generic_ptr,   -- mem
 -- every later `alloc' fails safely and the caller needs no special
 -- handling.  The caller owns the result and must eventually pass it to
 -- `nashj_destroy'.
-extern Nashj nashj_start = fn(uint size);
+extern Nashj __carla_abi_corelib_nashj_func__start = fn(uint size);
 
 -- Allocate `size' bytes, all set to zero, and return a REF handle.
 --
@@ -182,7 +182,7 @@ extern Nashj nashj_start = fn(uint size);
 --
 -- The result is a handle, not an address.  Use `nashj_makeraw' (or
 -- `to_raw', below) to get the plain address.
-extern generic_ptr nashj_alloc = fn(Nashj* addr, uint size);
+extern generic_ptr __carla_abi_corelib_nashj_func__alloc = fn(Nashj* addr, uint size);
 
 -- Free the allocation described by the handle `mem'.
 --
@@ -199,7 +199,7 @@ extern generic_ptr nashj_alloc = fn(Nashj* addr, uint size);
 --
 -- NOTE: the parameter is named `mem' for historical reasons, but it
 -- receives the HANDLE returned by `nashj_alloc', not a raw address.
-extern void nashj_dump = fn(Nashj* addr, generic_ptr mem);
+extern void __carla_abi_corelib_nashj_func__dump = fn(Nashj* addr, generic_ptr mem);
 
 -- Compact the data region: slide every live allocation down so that
 -- the gaps left by `nashj_dump' disappear.
@@ -220,7 +220,7 @@ extern void nashj_dump = fn(Nashj* addr, generic_ptr mem);
 -- that status.  The call itself is correct, but a failure is only
 -- visible through the runtime error.  Declare it as `int' if the
 -- status is needed.
-extern void nashj_coalesce = fn(Nashj* addr);
+extern void __carla_abi_corelib_nashj_func__coalesce = fn(Nashj* addr);
 
 -- Return the whole nashj to the operating system: the data region and
 -- every bookkeeping chunk.
@@ -230,7 +230,7 @@ extern void nashj_coalesce = fn(Nashj* addr);
 -- harmless.  Every pointer and every handle obtained from it is
 -- invalid.  If the system refuses to take the memory back, a runtime
 -- error is emitted, but the nashj is cleared anyway.
-extern void nashj_destroy = fn(Nashj* addr);
+extern void __carla_abi_corelib_nashj_func__destroy = fn(Nashj* addr);
 
 -- Return the plain address stored in a handle.
 --
@@ -241,7 +241,7 @@ extern void nashj_destroy = fn(Nashj* addr);
 --
 -- NOTE: this one takes the handle itself (a pointer to the C ref), not
 -- a pointer to a handle.  See `Qitah.to_raw' for the Carla side.
-extern byte* nashj_makeraw = fn(generic_ptr ref);
+extern byte* __carla_abi_corelib_nashj_func__makeraw = fn(generic_ptr ref);
 
 
 -- =====================================================================
@@ -277,7 +277,7 @@ extend Nashj {
     -- This is `nashj_start'.  It returns the nashj by value, so the
     -- variable that receives it owns the memory and must call `deinit'
     -- when it is done.  On failure the result has capacity zero.
-    Nashj init = fn(uint size) -> nashj_start(size);
+    Nashj init = fn(uint size) -> __carla_abi_corelib_nashj_func__start(size);
 
     -- Allocate a zero-filled block of `size' bytes and return its
     -- handle.
@@ -286,25 +286,27 @@ extend Nashj {
     -- the request is satisfied.  The cast to `Nashj.Qitah' only gives
     -- the generic pointer its proper handle type; it changes no bits.
     -- Returns NULL, after a runtime error, on failure.
-    Nashj.Qitah alloc = fn(self, uint size) -> nashj_alloc(self, size) as Nashj.Qitah;
+    Nashj.Qitah alloc = fn(self, uint size)
+        -> __carla_abi_corelib_nashj_func__alloc(self, size) as Nashj.Qitah;
 
     -- Release the allocation owned by `qitah'.
     --
     -- It is safe against a double free and against handles that do not
     -- belong to this instance: both emit a runtime error and change
     -- nothing.  A NULL handle is ignored.
-    void dump = fn(self, Nashj.Qitah qitah) -> nashj_dump(self, qitah);
+    void dump = fn(self, Nashj.Qitah qitah)
+        -> __carla_abi_corelib_nashj_func__dump(self, qitah);
 
     -- Compact the data region, closing every fragmentation gap.
     --
     -- After this call, any raw pointer that was materialised with
     -- `to_raw' is invalid.  Handles remain usable.
-    void coalesce = fn(self) -> nashj_coalesce(self);
+    void coalesce = fn(self) -> __carla_abi_corelib_nashj_func__coalesce(self);
 
     -- Tear the allocator down and return all the mapped memory to the
     -- operating system.  The nashj must not be used afterwards, except
     -- for a harmless second `deinit'.
-    void deinit = fn(self) -> nashj_destroy(self);
+    void deinit = fn(self) -> __carla_abi_corelib_nashj_func__destroy(self);
 
     -- Convenience: free one handle and compact right away.
     --
@@ -317,8 +319,8 @@ extend Nashj {
     -- single `coalesce' at the end when many blocks go away together.
     -- As with `coalesce', raw pointers are invalid afterwards.
     void flush = fn(self, Nashj.Qitah qitah) {
-        nashj_dump(self, qitah);
-        nashj_coalesce(self)
+        __carla_abi_corelib_nashj_func__dump(self, qitah);
+        __carla_abi_corelib_nashj_func__coalesce(self);
     }
 }
 
@@ -341,6 +343,6 @@ extend Nashj.Qitah {
     -- `reset' and `destroy'.
     byte* to_raw = fn(self) {
         let ptr := self as Nashj.Qitah*;
-        nashj_makeraw(ptr.*)
+        __carla_abi_corelib_nashj_func__makeraw(ptr.*)
     }
 }

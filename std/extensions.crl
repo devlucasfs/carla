@@ -1,3 +1,5 @@
+..@import("stream");
+
 extend byte* {
     uint strlen = fn(self) {
         for var i := 0 as uint; self.*[i] != 0; i++ {}
@@ -12,6 +14,22 @@ extend byte* {
 
     void print = fn(self) {
         syscall! 0x1(1, self.*, self.*.strlen());
+    }
+
+    void eprint = fn(self) {
+        syscall! 0x1(1, self.*, self.*.strlen());
+        syscall! 0x3c(1);
+    }
+
+    stream to_stream = fn(self) {
+        return self.*.strlen(), self.*;
+    }
+}
+
+extend generic_ptr {
+    stream to_stream = fn(self) {
+        let ptr := self.* as byte*;
+        return ptr.strlen(), ptr;
     }
 }
 

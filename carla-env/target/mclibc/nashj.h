@@ -52,11 +52,11 @@
 /* ---------------------------------------------------------------------
    Namespacing.
 
-   `mangled(id)' pastes the prefix `nashj_' in front of ID, so that
+   `mangled(id)' pastes the prefix `__carla_abi_corelib_func__' in front of ID, so that
    the lib's names cannot clash with the ones of any other lib or of
    the user's program.  It is used for types and for functions alike.  */
 
-#define mangled(id) nashj_##id
+#define mangled(id) __carla_abi_corelib_nashj_func__##id
 
 /* ---------------------------------------------------------------------
    Basic types.  */
