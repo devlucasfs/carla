@@ -108,7 +108,9 @@ extend CRoutine {
     CRoutine from_stream = fn(stream data) {
         if var size, raw := data; false {}
         let source := raw as CRoutine*;
-        return source.*;
+        let copy := source.*;
+        data.dump();
+        copy
     }
 
     void spawn = fn(CRoutines* manager, fn_ref r, stream args) {

@@ -1,3 +1,5 @@
+..@import("mem");
+
 using stream = |uint, byte*|;
 
 extend stream {
@@ -7,6 +9,11 @@ extend stream {
 
     stream make = fn() {
         return 0 as uint, "";
+    }
+
+    void dump = fn(self) {
+        if var s, p := self.*; false {}
+        SafeHeap.free_ptr(p, s);
     }
 
     stream from_str = fn(byte* str) {

@@ -102,7 +102,8 @@ X(alloc,            mangled(ref)*, (size_t size))                           \
 X(makeraw,          mangled(addr), (mangled(ref) *handle))                  \
 X(dump,             void,          (mangled(ref) *handle))                  \
 X(is_freed,         char,          (mangled(ref) *handle))                  \
-X(size,             size_t,        (mangled(ref) *handle))
+X(size,             size_t,        (mangled(ref) *handle))                  \
+X(munmap,           int,           (mangled(addr) ptr, size_t length))
 
 #define X(id, ret, args)                                            \
 extern inline ret mangled(id) args;

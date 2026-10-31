@@ -1,49 +1,69 @@
 
-.globl __carla_abi_extension_stream_from
-.type __carla_abi_extension_stream_from, @function
-__carla_abi_extension_stream_from:
+.globl eprint
+.type eprint, @function
+eprint:
 .LFP0:
 	pushq %rbp
 	movq %rsp, %rbp
 	subq $.LFRAME0, %rsp
 	movq %rdi, -8(%rbp)
-	movq %rsi, -16(%rbp)
-	movq %rdx, -24(%rbp)
-	movq -16(%rbp), %rax
-	movq %rax, -48(%rbp)
-	movq -24(%rbp), %rax
-	movq %rax, -40(%rbp)
-	movq -8(%rbp), %rdi
-	leaq -48(%rbp), %rsi
-	movq $16, %rcx
-	rep movsb
+	movq $0, %rax
+	movq %rax, -16(%rbp)
+.Lb_Lbc6dcdbd6a96:
 	movq -8(%rbp), %rax
-	jmp .LFE0
-	.set .LFRAME0, 48
+	movq -16(%rbp), %rcx
+	addq %rcx, %rax
+	movq %rax, -24(%rbp)
+	movq -24(%rbp), %rax
+	movb (%rax), %al
+	movb %al, -25(%rbp)
+	movzbq -25(%rbp), %rax
+	movq $0, %rcx
+	cmpq %rcx, %rax
+	setne %al
+	movb %al, -26(%rbp)
+	movb -26(%rbp), %al
+	test %al, %al
+	jz .Lb_Lcd5d08ac2f0b
+.Lb_L237bc637f764:
+	movq -16(%rbp), %rax
+	movq $1, %rcx
+	addq %rcx, %rax
+	movq %rax, -40(%rbp)
+	movq -40(%rbp), %rax
+	movq %rax, -16(%rbp)
+	jmp .Lb_Lbc6dcdbd6a96
+.Lb_Lcd5d08ac2f0b:
+	movq $1, %rdi
+	movq -8(%rbp), %rsi
+	movq -16(%rbp), %rdx
+	movq $1, %rax
+	syscall
+	movq %rax, -48(%rbp)
+	movq $1, %rdi
+	movq $60, %rax
+	syscall
+	movq %rax, -56(%rbp)
+	.set .LFRAME0, 64
 .LFE0:
 	leave
 	ret
-.size __carla_abi_extension_stream_from, . - __carla_abi_extension_stream_from
+.size eprint, . - eprint
 
-.globl __carla_abi_extension_stream_make
-.type __carla_abi_extension_stream_make, @function
-__carla_abi_extension_stream_make:
+.globl __carla_abi_extension_error_from
+.type __carla_abi_extension_error_from, @function
+__carla_abi_extension_error_from:
 .LFP1:
 	pushq %rbp
 	movq %rsp, %rbp
 	subq $.LFRAME1, %rsp
 	movq %rdi, -8(%rbp)
-	movq $0, %rax
-	movq %rax, -16(%rbp)
-	.pushsection .rodata.str1.1,"aMS",@progbits,1
-	.Lstr0:
-	.byte 0
-	.popsection
-	leaq .Lstr0(%rip), %rax
-	movq %rax, -24(%rbp)
+	movq %rsi, -16(%rbp)
+	movb $255, %al
+	movb %al, -17(%rbp)
+	movb -17(%rbp), %al
+	movb %al, -48(%rbp)
 	movq -16(%rbp), %rax
-	movq %rax, -48(%rbp)
-	movq -24(%rbp), %rax
 	movq %rax, -40(%rbp)
 	movq -8(%rbp), %rdi
 	leaq -48(%rbp), %rsi
@@ -55,90 +75,81 @@ __carla_abi_extension_stream_make:
 .LFE1:
 	leave
 	ret
-.size __carla_abi_extension_stream_make, . - __carla_abi_extension_stream_make
+.size __carla_abi_extension_error_from, . - __carla_abi_extension_error_from
 
-.globl __carla_abi_extension_stream_from_str
-.type __carla_abi_extension_stream_from_str, @function
-__carla_abi_extension_stream_from_str:
+.globl __carla_abi_extension_error_make
+.type __carla_abi_extension_error_make, @function
+__carla_abi_extension_error_make:
 .LFP2:
 	pushq %rbp
 	movq %rsp, %rbp
 	subq $.LFRAME2, %rsp
 	movq %rdi, -8(%rbp)
-	movq %rsi, -16(%rbp)
-	movq $0, %rax
+	movb $0, %al
+	movb %al, -9(%rbp)
+	.pushsection .rodata.str1.1,"aMS",@progbits,1
+	.Lstr0:
+	.byte 0
+	.popsection
+	leaq .Lstr0(%rip), %rax
 	movq %rax, -24(%rbp)
-.Lb_L30cd8ce82947:
-	movq -16(%rbp), %rax
-	movq -24(%rbp), %rcx
-	addq %rcx, %rax
-	movq %rax, -32(%rbp)
-	movq -32(%rbp), %rax
-	movb (%rax), %al
-	movb %al, -33(%rbp)
-	movzbq -33(%rbp), %rax
-	movq $0, %rcx
-	cmpq %rcx, %rax
-	setne %al
-	movb %al, -34(%rbp)
-	movb -34(%rbp), %al
-	test %al, %al
-	jz .Lb_L85190ce0213c
-.Lb_L4d42e36c8f81:
+	movb -9(%rbp), %al
+	movb %al, -48(%rbp)
 	movq -24(%rbp), %rax
-	movq $1, %rcx
-	addq %rcx, %rax
-	movq %rax, -48(%rbp)
-	movq -48(%rbp), %rax
-	movq %rax, -24(%rbp)
-	jmp .Lb_L30cd8ce82947
-.Lb_L85190ce0213c:
-	movq -24(%rbp), %rax
-	movq %rax, -64(%rbp)
-	movq -16(%rbp), %rax
-	movq %rax, -56(%rbp)
-	movq -8(%rbp), %rdi
-	leaq -64(%rbp), %rsi
-	movq $16, %rcx
-	rep movsb
-	movq -8(%rbp), %rax
-	jmp .LFE2
-	.set .LFRAME2, 64
-.LFE2:
-	leave
-	ret
-.size __carla_abi_extension_stream_from_str, . - __carla_abi_extension_stream_from_str
-
-.globl __carla_abi_extension_stream_from_ptr
-.type __carla_abi_extension_stream_from_ptr, @function
-__carla_abi_extension_stream_from_ptr:
-.LFP3:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME3, %rsp
-	movq %rdi, -8(%rbp)
-	movq %rsi, -16(%rbp)
-	movq $0, %rax
-	movq %rax, -24(%rbp)
-	movq -24(%rbp), %rax
-	movq %rax, -48(%rbp)
-	movq -16(%rbp), %rax
 	movq %rax, -40(%rbp)
 	movq -8(%rbp), %rdi
 	leaq -48(%rbp), %rsi
 	movq $16, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE3
-	.set .LFRAME3, 48
+	jmp .LFE2
+	.set .LFRAME2, 48
+.LFE2:
+	leave
+	ret
+.size __carla_abi_extension_error_make, . - __carla_abi_extension_error_make
+
+.globl __carla_abi_extension_error_panic
+.type __carla_abi_extension_error_panic, @function
+__carla_abi_extension_error_panic:
+.LFP3:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME3, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rax
+	movq %rax, %rsi
+	leaq -32(%rbp), %rdi
+	movq $16, %rcx
+	rep movsb
+	leaq -32(%rbp), %rax
+	movq %rax, -40(%rbp)
+	movq -40(%rbp), %rax
+	movq $8, %rcx
+	addq %rcx, %rax
+	movq %rax, -48(%rbp)
+	movq -48(%rbp), %rax
+	movq (%rax), %rax
+	movq %rax, -56(%rbp)
+	movq -56(%rbp), %rax
+	movq %rax, -64(%rbp)
+	movb $255, %al
+	movb %al, -65(%rbp)
+	movb -65(%rbp), %al
+	test %al, %al
+	jz .Lb_L025abf77a51c
+.Lb_L025abf77a51c:
+	movq -64(%rbp), %rdi
+	call eprint
+	.set .LFRAME3, 80
 .LFE3:
 	leave
 	ret
-.size __carla_abi_extension_stream_from_ptr, . - __carla_abi_extension_stream_from_ptr
+.size __carla_abi_extension_error_panic, . - __carla_abi_extension_error_panic
 
-.globl __carla_abi_extension_stream_to_ptr
-.type __carla_abi_extension_stream_to_ptr, @function
-__carla_abi_extension_stream_to_ptr:
+.globl __carla_abi_extension_error_msg
+.type __carla_abi_extension_error_msg, @function
+__carla_abi_extension_error_msg:
 .LFP4:
 	pushq %rbp
 	movq %rsp, %rbp
@@ -160,16 +171,499 @@ __carla_abi_extension_stream_to_ptr:
 	movq %rax, -56(%rbp)
 	movq -56(%rbp), %rax
 	movq %rax, -64(%rbp)
-	movb $0, %al
+	movb $255, %al
 	movb %al, -65(%rbp)
 	movb -65(%rbp), %al
 	test %al, %al
-	jz .Lb_La6588aa0050a
-.Lb_La6588aa0050a:
+	jz .Lb_Lf227a3ae8571
+.Lb_Lf227a3ae8571:
 	movq -64(%rbp), %rax
 	jmp .LFE4
 	.set .LFRAME4, 80
 .LFE4:
+	leave
+	ret
+.size __carla_abi_extension_error_msg, . - __carla_abi_extension_error_msg
+
+.globl __carla_abi_extension_error_isnt_empty
+.type __carla_abi_extension_error_isnt_empty, @function
+__carla_abi_extension_error_isnt_empty:
+.LFP5:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME5, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rax
+	movq %rax, %rsi
+	leaq -32(%rbp), %rdi
+	movq $16, %rcx
+	rep movsb
+	leaq -32(%rbp), %rax
+	movq %rax, -40(%rbp)
+	movq -40(%rbp), %rax
+	movb (%rax), %al
+	movb %al, -41(%rbp)
+	movb -41(%rbp), %al
+	movb %al, -42(%rbp)
+	movb $255, %al
+	movb %al, -43(%rbp)
+	movb -43(%rbp), %al
+	test %al, %al
+	jz .Lb_Le0b93e277e95
+.Lb_Le0b93e277e95:
+	movb -42(%rbp), %al
+	jmp .LFE5
+	.set .LFRAME5, 48
+.LFE5:
+	leave
+	ret
+.size __carla_abi_extension_error_isnt_empty, . - __carla_abi_extension_error_isnt_empty
+
+.globl __carla_abi_extension_error_is_empty
+.type __carla_abi_extension_error_is_empty, @function
+__carla_abi_extension_error_is_empty:
+.LFP6:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME6, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rax
+	movq %rax, %rsi
+	leaq -32(%rbp), %rdi
+	movq $16, %rcx
+	rep movsb
+	leaq -32(%rbp), %rax
+	movq %rax, -40(%rbp)
+	movq -40(%rbp), %rax
+	movb (%rax), %al
+	movb %al, -41(%rbp)
+	movb -41(%rbp), %al
+	movb %al, -42(%rbp)
+	movb $255, %al
+	movb %al, -43(%rbp)
+	movb -43(%rbp), %al
+	test %al, %al
+	jz .Lb_L065caad2a325
+.Lb_L065caad2a325:
+	movb -42(%rbp), %al
+	test %al, %al
+	jz .Lb_L6212f2f5ef31
+	movq $0, %rax
+	jmp .LFE6
+.Lb_L6212f2f5ef31:
+	movq $255, %rax
+	jmp .LFE6
+	.set .LFRAME6, 48
+.LFE6:
+	leave
+	ret
+.size __carla_abi_extension_error_is_empty, . - __carla_abi_extension_error_is_empty
+.extern __carla_abi_corelib_rmem_func__bookkeeping_set
+.extern __carla_abi_corelib_rmem_func__bookkeeping_dump
+.extern __carla_abi_corelib_rmem_func__dump
+.extern __carla_abi_corelib_rmem_func__alloc
+.extern __carla_abi_corelib_rmem_func__munmap
+
+.globl __carla_abi_extension_SafeHeap_init
+.type __carla_abi_extension_SafeHeap_init, @function
+__carla_abi_extension_SafeHeap_init:
+.LFP7:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME7, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rdi
+	call __carla_abi_corelib_rmem_func__bookkeeping_set
+	.set .LFRAME7, 16
+.LFE7:
+	leave
+	ret
+.size __carla_abi_extension_SafeHeap_init, . - __carla_abi_extension_SafeHeap_init
+
+.globl __carla_abi_extension_SafeHeap_deinit
+.type __carla_abi_extension_SafeHeap_deinit, @function
+__carla_abi_extension_SafeHeap_deinit:
+.LFP8:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME8, %rsp
+	call __carla_abi_corelib_rmem_func__bookkeeping_dump
+	.set .LFRAME8, 0
+.LFE8:
+	leave
+	ret
+.size __carla_abi_extension_SafeHeap_deinit, . - __carla_abi_extension_SafeHeap_deinit
+
+.globl __carla_abi_extension_SafeHeap_dump
+.type __carla_abi_extension_SafeHeap_dump, @function
+__carla_abi_extension_SafeHeap_dump:
+.LFP9:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME9, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rdi
+	call __carla_abi_corelib_rmem_func__dump
+	.set .LFRAME9, 16
+.LFE9:
+	leave
+	ret
+.size __carla_abi_extension_SafeHeap_dump, . - __carla_abi_extension_SafeHeap_dump
+
+.globl __carla_abi_extension_SafeHeap_alloc
+.type __carla_abi_extension_SafeHeap_alloc, @function
+__carla_abi_extension_SafeHeap_alloc:
+.LFP10:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME10, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rdi
+	call __carla_abi_corelib_rmem_func__alloc
+	movq %rax, -16(%rbp)
+	movq -16(%rbp), %rax
+	jmp .LFE10
+	.set .LFRAME10, 16
+.LFE10:
+	leave
+	ret
+.size __carla_abi_extension_SafeHeap_alloc, . - __carla_abi_extension_SafeHeap_alloc
+
+.globl __carla_abi_extension_SafeHeap_free_ptr
+.type __carla_abi_extension_SafeHeap_free_ptr, @function
+__carla_abi_extension_SafeHeap_free_ptr:
+.LFP11:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME11, %rsp
+	movq %rdi, -8(%rbp)
+	movq %rsi, -16(%rbp)
+	movq -16(%rbp), %rsi
+	movq -8(%rbp), %rdi
+	call __carla_abi_corelib_rmem_func__munmap
+	.set .LFRAME11, 16
+.LFE11:
+	leave
+	ret
+.size __carla_abi_extension_SafeHeap_free_ptr, . - __carla_abi_extension_SafeHeap_free_ptr
+
+.globl __carla_abi_extension_SafeHeap_memcpy
+.type __carla_abi_extension_SafeHeap_memcpy, @function
+__carla_abi_extension_SafeHeap_memcpy:
+.LFP12:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME12, %rsp
+	movq %rdi, -8(%rbp)
+	movq %rsi, -16(%rbp)
+	movq %rdx, -24(%rbp)
+	movq -8(%rbp), %rax
+	movq %rax, -32(%rbp)
+	movq -16(%rbp), %rax
+	movq %rax, -40(%rbp)
+	movq -24(%rbp), %rax
+	movq %rax, -48(%rbp)
+	movq $0, %rax
+	movq %rax, -56(%rbp)
+.Lb_Led95ac3c1d86:
+	movq -56(%rbp), %rax
+	movq -48(%rbp), %rcx
+	cmpq %rcx, %rax
+	setb %al
+	movb %al, -57(%rbp)
+	movb -57(%rbp), %al
+	test %al, %al
+	jz .Lb_L73474b9edffa
+	movq -32(%rbp), %rax
+	movq -56(%rbp), %rcx
+	addq %rcx, %rax
+	movq %rax, -72(%rbp)
+	movq -40(%rbp), %rax
+	movq -56(%rbp), %rcx
+	addq %rcx, %rax
+	movq %rax, -80(%rbp)
+	movq -80(%rbp), %rax
+	movb (%rax), %al
+	movb %al, -81(%rbp)
+	movq -72(%rbp), %rcx
+	movb -81(%rbp), %al
+	movb %al, (%rcx)
+.Lb_L909a0273855a:
+	movq -56(%rbp), %rax
+	movq $1, %rcx
+	addq %rcx, %rax
+	movq %rax, -96(%rbp)
+	movq -96(%rbp), %rax
+	movq %rax, -56(%rbp)
+	jmp .Lb_Led95ac3c1d86
+.Lb_L73474b9edffa:
+	.set .LFRAME12, 96
+.LFE12:
+	leave
+	ret
+.size __carla_abi_extension_SafeHeap_memcpy, . - __carla_abi_extension_SafeHeap_memcpy
+.extern __carla_abi_corelib_rmem_func__makeraw
+.extern __carla_abi_corelib_rmem_func__size
+
+.globl __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
+.type __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw, @function
+__carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw:
+.LFP13:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME13, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rax
+	movq %rax, -16(%rbp)
+	movq -16(%rbp), %rax
+	movq (%rax), %rax
+	movq %rax, -24(%rbp)
+	movq -24(%rbp), %rdi
+	call __carla_abi_corelib_rmem_func__makeraw
+	movq %rax, -32(%rbp)
+	movq -32(%rbp), %rax
+	jmp .LFE13
+	.set .LFRAME13, 32
+.LFE13:
+	leave
+	ret
+.size __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw, . - __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
+
+.globl __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size
+.type __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size, @function
+__carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size:
+.LFP14:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME14, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rax
+	movq %rax, -16(%rbp)
+	movq -16(%rbp), %rax
+	movq (%rax), %rax
+	movq %rax, -24(%rbp)
+	movq -24(%rbp), %rdi
+	call __carla_abi_corelib_rmem_func__size
+	movq %rax, -32(%rbp)
+	movq -32(%rbp), %rax
+	jmp .LFE14
+	.set .LFRAME14, 32
+.LFE14:
+	leave
+	ret
+.size __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size, . - __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size
+
+.globl __carla_abi_extension_stream_from
+.type __carla_abi_extension_stream_from, @function
+__carla_abi_extension_stream_from:
+.LFP15:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME15, %rsp
+	movq %rdi, -8(%rbp)
+	movq %rsi, -16(%rbp)
+	movq %rdx, -24(%rbp)
+	movq -16(%rbp), %rax
+	movq %rax, -48(%rbp)
+	movq -24(%rbp), %rax
+	movq %rax, -40(%rbp)
+	movq -8(%rbp), %rdi
+	leaq -48(%rbp), %rsi
+	movq $16, %rcx
+	rep movsb
+	movq -8(%rbp), %rax
+	jmp .LFE15
+	.set .LFRAME15, 48
+.LFE15:
+	leave
+	ret
+.size __carla_abi_extension_stream_from, . - __carla_abi_extension_stream_from
+
+.globl __carla_abi_extension_stream_make
+.type __carla_abi_extension_stream_make, @function
+__carla_abi_extension_stream_make:
+.LFP16:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME16, %rsp
+	movq %rdi, -8(%rbp)
+	movq $0, %rax
+	movq %rax, -16(%rbp)
+	leaq .Lstr0(%rip), %rax
+	movq %rax, -24(%rbp)
+	movq -16(%rbp), %rax
+	movq %rax, -48(%rbp)
+	movq -24(%rbp), %rax
+	movq %rax, -40(%rbp)
+	movq -8(%rbp), %rdi
+	leaq -48(%rbp), %rsi
+	movq $16, %rcx
+	rep movsb
+	movq -8(%rbp), %rax
+	jmp .LFE16
+	.set .LFRAME16, 48
+.LFE16:
+	leave
+	ret
+.size __carla_abi_extension_stream_make, . - __carla_abi_extension_stream_make
+
+.globl __carla_abi_extension_stream_dump
+.type __carla_abi_extension_stream_dump, @function
+__carla_abi_extension_stream_dump:
+.LFP17:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME17, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rax
+	movq %rax, %rsi
+	leaq -32(%rbp), %rdi
+	movq $16, %rcx
+	rep movsb
+	leaq -32(%rbp), %rax
+	movq %rax, -40(%rbp)
+	movq -40(%rbp), %rax
+	movq (%rax), %rax
+	movq %rax, -48(%rbp)
+	movq -48(%rbp), %rax
+	movq %rax, -56(%rbp)
+	movq -40(%rbp), %rax
+	movq $8, %rcx
+	addq %rcx, %rax
+	movq %rax, -64(%rbp)
+	movq -64(%rbp), %rax
+	movq (%rax), %rax
+	movq %rax, -72(%rbp)
+	movq -72(%rbp), %rax
+	movq %rax, -80(%rbp)
+	movb $0, %al
+	movb %al, -81(%rbp)
+	movb -81(%rbp), %al
+	test %al, %al
+	jz .Lb_Lcd6152e0bca3
+.Lb_Lcd6152e0bca3:
+	movq -56(%rbp), %rsi
+	movq -80(%rbp), %rdi
+	call __carla_abi_extension_SafeHeap_free_ptr
+	.set .LFRAME17, 96
+.LFE17:
+	leave
+	ret
+.size __carla_abi_extension_stream_dump, . - __carla_abi_extension_stream_dump
+
+.globl __carla_abi_extension_stream_from_str
+.type __carla_abi_extension_stream_from_str, @function
+__carla_abi_extension_stream_from_str:
+.LFP18:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME18, %rsp
+	movq %rdi, -8(%rbp)
+	movq %rsi, -16(%rbp)
+	movq $0, %rax
+	movq %rax, -24(%rbp)
+.Lb_L7fbff8fe3082:
+	movq -16(%rbp), %rax
+	movq -24(%rbp), %rcx
+	addq %rcx, %rax
+	movq %rax, -32(%rbp)
+	movq -32(%rbp), %rax
+	movb (%rax), %al
+	movb %al, -33(%rbp)
+	movzbq -33(%rbp), %rax
+	movq $0, %rcx
+	cmpq %rcx, %rax
+	setne %al
+	movb %al, -34(%rbp)
+	movb -34(%rbp), %al
+	test %al, %al
+	jz .Lb_L4772da8d5859
+.Lb_L972da3431d1b:
+	movq -24(%rbp), %rax
+	movq $1, %rcx
+	addq %rcx, %rax
+	movq %rax, -48(%rbp)
+	movq -48(%rbp), %rax
+	movq %rax, -24(%rbp)
+	jmp .Lb_L7fbff8fe3082
+.Lb_L4772da8d5859:
+	movq -24(%rbp), %rax
+	movq %rax, -64(%rbp)
+	movq -16(%rbp), %rax
+	movq %rax, -56(%rbp)
+	movq -8(%rbp), %rdi
+	leaq -64(%rbp), %rsi
+	movq $16, %rcx
+	rep movsb
+	movq -8(%rbp), %rax
+	jmp .LFE18
+	.set .LFRAME18, 64
+.LFE18:
+	leave
+	ret
+.size __carla_abi_extension_stream_from_str, . - __carla_abi_extension_stream_from_str
+
+.globl __carla_abi_extension_stream_from_ptr
+.type __carla_abi_extension_stream_from_ptr, @function
+__carla_abi_extension_stream_from_ptr:
+.LFP19:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME19, %rsp
+	movq %rdi, -8(%rbp)
+	movq %rsi, -16(%rbp)
+	movq $0, %rax
+	movq %rax, -24(%rbp)
+	movq -24(%rbp), %rax
+	movq %rax, -48(%rbp)
+	movq -16(%rbp), %rax
+	movq %rax, -40(%rbp)
+	movq -8(%rbp), %rdi
+	leaq -48(%rbp), %rsi
+	movq $16, %rcx
+	rep movsb
+	movq -8(%rbp), %rax
+	jmp .LFE19
+	.set .LFRAME19, 48
+.LFE19:
+	leave
+	ret
+.size __carla_abi_extension_stream_from_ptr, . - __carla_abi_extension_stream_from_ptr
+
+.globl __carla_abi_extension_stream_to_ptr
+.type __carla_abi_extension_stream_to_ptr, @function
+__carla_abi_extension_stream_to_ptr:
+.LFP20:
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $.LFRAME20, %rsp
+	movq %rdi, -8(%rbp)
+	movq -8(%rbp), %rax
+	movq %rax, %rsi
+	leaq -32(%rbp), %rdi
+	movq $16, %rcx
+	rep movsb
+	leaq -32(%rbp), %rax
+	movq %rax, -40(%rbp)
+	movq -40(%rbp), %rax
+	movq $8, %rcx
+	addq %rcx, %rax
+	movq %rax, -48(%rbp)
+	movq -48(%rbp), %rax
+	movq (%rax), %rax
+	movq %rax, -56(%rbp)
+	movq -56(%rbp), %rax
+	movq %rax, -64(%rbp)
+	movb $0, %al
+	movb %al, -65(%rbp)
+	movb -65(%rbp), %al
+	test %al, %al
+	jz .Lb_L14559e6da6b7
+.Lb_L14559e6da6b7:
+	movq -64(%rbp), %rax
+	jmp .LFE20
+	.set .LFRAME20, 80
+.LFE20:
 	leave
 	ret
 .size __carla_abi_extension_stream_to_ptr, . - __carla_abi_extension_stream_to_ptr
@@ -177,14 +671,14 @@ __carla_abi_extension_stream_to_ptr:
 .globl __carla_abi_extension_byte_P_strlen
 .type __carla_abi_extension_byte_P_strlen, @function
 __carla_abi_extension_byte_P_strlen:
-.LFP5:
+.LFP21:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME5, %rsp
+	subq $.LFRAME21, %rsp
 	movq %rdi, -8(%rbp)
 	movq $0, %rax
 	movq %rax, -16(%rbp)
-.Lb_L1e3435e79290:
+.Lb_Ld43b09b5bae2:
 	movq -8(%rbp), %rax
 	movq (%rax), %rax
 	movq %rax, -24(%rbp)
@@ -202,20 +696,20 @@ __carla_abi_extension_byte_P_strlen:
 	movb %al, -34(%rbp)
 	movb -34(%rbp), %al
 	test %al, %al
-	jz .Lb_L8a3cdc761a79
-.Lb_Laeb1e55b76b0:
+	jz .Lb_Leed8f44fe6ec
+.Lb_L0b512101143e:
 	movq -16(%rbp), %rax
 	movq $1, %rcx
 	addq %rcx, %rax
 	movq %rax, -48(%rbp)
 	movq -48(%rbp), %rax
 	movq %rax, -16(%rbp)
-	jmp .Lb_L1e3435e79290
-.Lb_L8a3cdc761a79:
+	jmp .Lb_Ld43b09b5bae2
+.Lb_Leed8f44fe6ec:
 	movq -16(%rbp), %rax
-	jmp .LFE5
-	.set .LFRAME5, 48
-.LFE5:
+	jmp .LFE21
+	.set .LFRAME21, 48
+.LFE21:
 	leave
 	ret
 .size __carla_abi_extension_byte_P_strlen, . - __carla_abi_extension_byte_P_strlen
@@ -223,16 +717,16 @@ __carla_abi_extension_byte_P_strlen:
 .globl __carla_abi_extension_byte_P_strlen_r
 .type __carla_abi_extension_byte_P_strlen_r, @function
 __carla_abi_extension_byte_P_strlen_r:
-.LFP6:
+.LFP22:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME6, %rsp
+	subq $.LFRAME22, %rsp
 	movq %rdi, -8(%rbp)
 	movq $0, %rax
 	movq %rax, -16(%rbp)
 	movq $0, %rax
 	movq %rax, -24(%rbp)
-.Lb_L3ef8a3a5c7e1:
+.Lb_L9380a9123fd8:
 	movq -8(%rbp), %rax
 	movq (%rax), %rax
 	movq %rax, -32(%rbp)
@@ -250,30 +744,30 @@ __carla_abi_extension_byte_P_strlen_r:
 	movb %al, -42(%rbp)
 	movb -42(%rbp), %al
 	test %al, %al
-	jz .Lb_L0a826b158f47
+	jz .Lb_L31af97470b9c
 	movq -16(%rbp), %rax
 	movq $1, %rcx
 	subq %rcx, %rax
 	movq %rax, -56(%rbp)
 	movq -56(%rbp), %rax
 	movq %rax, -16(%rbp)
-.Lb_Lfa8f53e9e4eb:
+.Lb_L28f33850a726:
 	movq -24(%rbp), %rax
 	movq $1, %rcx
 	addq %rcx, %rax
 	movq %rax, -64(%rbp)
 	movq -64(%rbp), %rax
 	movq %rax, -24(%rbp)
-	jmp .Lb_L3ef8a3a5c7e1
-.Lb_L0a826b158f47:
+	jmp .Lb_L9380a9123fd8
+.Lb_L31af97470b9c:
 	movq -16(%rbp), %rax
 	movq $1, %rcx
 	subq %rcx, %rax
 	movq %rax, -72(%rbp)
 	movq -72(%rbp), %rax
 	movq %rax, -16(%rbp)
-	.set .LFRAME6, 80
-.LFE6:
+	.set .LFRAME22, 80
+.LFE22:
 	leave
 	ret
 .size __carla_abi_extension_byte_P_strlen_r, . - __carla_abi_extension_byte_P_strlen_r
@@ -281,10 +775,10 @@ __carla_abi_extension_byte_P_strlen_r:
 .globl __carla_abi_extension_byte_P_print
 .type __carla_abi_extension_byte_P_print, @function
 __carla_abi_extension_byte_P_print:
-.LFP7:
+.LFP23:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME7, %rsp
+	subq $.LFRAME23, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rax
 	movq (%rax), %rax
@@ -298,49 +792,19 @@ __carla_abi_extension_byte_P_print:
 	movq $1, %rax
 	syscall
 	movq %rax, -32(%rbp)
-	.set .LFRAME7, 32
-.LFE7:
+	.set .LFRAME23, 32
+.LFE23:
 	leave
 	ret
 .size __carla_abi_extension_byte_P_print, . - __carla_abi_extension_byte_P_print
 
-.globl __carla_abi_extension_byte_P_eprint
-.type __carla_abi_extension_byte_P_eprint, @function
-__carla_abi_extension_byte_P_eprint:
-.LFP8:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME8, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rax
-	movq (%rax), %rax
-	movq %rax, -16(%rbp)
-	movq -8(%rbp), %rdi
-	call __carla_abi_extension_byte_P_strlen
-	movq %rax, -24(%rbp)
-	movq $1, %rdi
-	movq -16(%rbp), %rsi
-	movq -24(%rbp), %rdx
-	movq $1, %rax
-	syscall
-	movq %rax, -32(%rbp)
-	movq $1, %rdi
-	movq $60, %rax
-	syscall
-	movq %rax, -40(%rbp)
-	.set .LFRAME8, 48
-.LFE8:
-	leave
-	ret
-.size __carla_abi_extension_byte_P_eprint, . - __carla_abi_extension_byte_P_eprint
-
 .globl __carla_abi_extension_byte_P_to_stream
 .type __carla_abi_extension_byte_P_to_stream, @function
 __carla_abi_extension_byte_P_to_stream:
-.LFP9:
+.LFP24:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME9, %rsp
+	subq $.LFRAME24, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq -16(%rbp), %rdi
@@ -358,9 +822,9 @@ __carla_abi_extension_byte_P_to_stream:
 	movq $16, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE9
-	.set .LFRAME9, 48
-.LFE9:
+	jmp .LFE24
+	.set .LFRAME24, 48
+.LFE24:
 	leave
 	ret
 .size __carla_abi_extension_byte_P_to_stream, . - __carla_abi_extension_byte_P_to_stream
@@ -368,10 +832,10 @@ __carla_abi_extension_byte_P_to_stream:
 .globl __carla_abi_extension_generic_ptr_to_stream
 .type __carla_abi_extension_generic_ptr_to_stream, @function
 __carla_abi_extension_generic_ptr_to_stream:
-.LFP10:
+.LFP25:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME10, %rsp
+	subq $.LFRAME25, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq -16(%rbp), %rax
@@ -391,9 +855,9 @@ __carla_abi_extension_generic_ptr_to_stream:
 	movq $16, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE10
-	.set .LFRAME10, 64
-.LFE10:
+	jmp .LFE25
+	.set .LFRAME25, 64
+.LFE25:
 	leave
 	ret
 .size __carla_abi_extension_generic_ptr_to_stream, . - __carla_abi_extension_generic_ptr_to_stream
@@ -401,10 +865,10 @@ __carla_abi_extension_generic_ptr_to_stream:
 .globl __carla_abi_extension_int_print
 .type __carla_abi_extension_int_print, @function
 __carla_abi_extension_int_print:
-.LFP11:
+.LFP26:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME11, %rsp
+	subq $.LFRAME26, %rsp
 	movq %rdi, -8(%rbp)
 	movb $0, %al
 	movb %al, -9(%rbp)
@@ -420,7 +884,7 @@ __carla_abi_extension_int_print:
 	movb %al, -33(%rbp)
 	movb -33(%rbp), %al
 	test %al, %al
-	jz .Lb_L364ce0cd1a7c
+	jz .Lb_L6b27a9bca897
 	movb $45, %al
 	movb %al, -9(%rbp)
 	movq $1, %rdi
@@ -435,10 +899,10 @@ __carla_abi_extension_int_print:
 	movq %rax, -56(%rbp)
 	movq -56(%rbp), %rax
 	movq %rax, -32(%rbp)
-.Lb_L364ce0cd1a7c:
+.Lb_L6b27a9bca897:
 	movq $1, %rax
 	movq %rax, -64(%rbp)
-.Lb_L6aedd285421f:
+.Lb_L4f01be0f2d84:
 	movq -32(%rbp), %rax
 	movq -64(%rbp), %rcx
 	cqto
@@ -451,16 +915,16 @@ __carla_abi_extension_int_print:
 	movb %al, -73(%rbp)
 	movb -73(%rbp), %al
 	test %al, %al
-	jz .Lb_L3da062ed5fa6
+	jz .Lb_La7c0317c706b
 	movq -64(%rbp), %rax
 	movq $10, %rcx
 	imulq %rcx, %rax
 	movq %rax, -88(%rbp)
 	movq -88(%rbp), %rax
 	movq %rax, -64(%rbp)
-	jmp .Lb_L6aedd285421f
-.Lb_L3da062ed5fa6:
-.Lb_L5f1cd61b833e:
+	jmp .Lb_L4f01be0f2d84
+.Lb_La7c0317c706b:
+.Lb_Lbe429ef6240a:
 	movq -64(%rbp), %rax
 	movq $0, %rcx
 	cmpq %rcx, %rax
@@ -468,7 +932,7 @@ __carla_abi_extension_int_print:
 	movb %al, -89(%rbp)
 	movb -89(%rbp), %al
 	test %al, %al
-	jz .Lb_Lb5bfff85d0ac
+	jz .Lb_L4eb1cebabeb9
 	movq -32(%rbp), %rax
 	movq -64(%rbp), %rcx
 	cqto
@@ -501,8 +965,8 @@ __carla_abi_extension_int_print:
 	movq %rax, -144(%rbp)
 	movq -144(%rbp), %rax
 	movq %rax, -64(%rbp)
-	jmp .Lb_L5f1cd61b833e
-.Lb_Lb5bfff85d0ac:
+	jmp .Lb_Lbe429ef6240a
+.Lb_L4eb1cebabeb9:
 	.pushsection .rodata.str1.1,"aMS",@progbits,1
 	.Lstr1:
 	.byte 10, 0
@@ -515,216 +979,11 @@ __carla_abi_extension_int_print:
 	movq $1, %rax
 	syscall
 	movq %rax, -160(%rbp)
-	.set .LFRAME11, 160
-.LFE11:
+	.set .LFRAME26, 160
+.LFE26:
 	leave
 	ret
 .size __carla_abi_extension_int_print, . - __carla_abi_extension_int_print
-
-.globl __carla_abi_extension_error_from
-.type __carla_abi_extension_error_from, @function
-__carla_abi_extension_error_from:
-.LFP12:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME12, %rsp
-	movq %rdi, -8(%rbp)
-	movq %rsi, -16(%rbp)
-	movb $255, %al
-	movb %al, -17(%rbp)
-	movb -17(%rbp), %al
-	movb %al, -48(%rbp)
-	movq -16(%rbp), %rax
-	movq %rax, -40(%rbp)
-	movq -8(%rbp), %rdi
-	leaq -48(%rbp), %rsi
-	movq $16, %rcx
-	rep movsb
-	movq -8(%rbp), %rax
-	jmp .LFE12
-	.set .LFRAME12, 48
-.LFE12:
-	leave
-	ret
-.size __carla_abi_extension_error_from, . - __carla_abi_extension_error_from
-
-.globl __carla_abi_extension_error_make
-.type __carla_abi_extension_error_make, @function
-__carla_abi_extension_error_make:
-.LFP13:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME13, %rsp
-	movq %rdi, -8(%rbp)
-	movb $0, %al
-	movb %al, -9(%rbp)
-	leaq .Lstr0(%rip), %rax
-	movq %rax, -24(%rbp)
-	movb -9(%rbp), %al
-	movb %al, -48(%rbp)
-	movq -24(%rbp), %rax
-	movq %rax, -40(%rbp)
-	movq -8(%rbp), %rdi
-	leaq -48(%rbp), %rsi
-	movq $16, %rcx
-	rep movsb
-	movq -8(%rbp), %rax
-	jmp .LFE13
-	.set .LFRAME13, 48
-.LFE13:
-	leave
-	ret
-.size __carla_abi_extension_error_make, . - __carla_abi_extension_error_make
-
-.globl __carla_abi_extension_error_panic
-.type __carla_abi_extension_error_panic, @function
-__carla_abi_extension_error_panic:
-.LFP14:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME14, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rax
-	movq %rax, %rsi
-	leaq -32(%rbp), %rdi
-	movq $16, %rcx
-	rep movsb
-	leaq -32(%rbp), %rax
-	movq %rax, -40(%rbp)
-	movq -40(%rbp), %rax
-	movq $8, %rcx
-	addq %rcx, %rax
-	movq %rax, -48(%rbp)
-	movq -48(%rbp), %rax
-	movq (%rax), %rax
-	movq %rax, -56(%rbp)
-	movq -56(%rbp), %rax
-	movq %rax, -64(%rbp)
-	movb $255, %al
-	movb %al, -65(%rbp)
-	movb -65(%rbp), %al
-	test %al, %al
-	jz .Lb_L90700c04ee81
-.Lb_L90700c04ee81:
-	leaq -64(%rbp), %rdi
-	call __carla_abi_extension_byte_P_eprint
-	.set .LFRAME14, 80
-.LFE14:
-	leave
-	ret
-.size __carla_abi_extension_error_panic, . - __carla_abi_extension_error_panic
-
-.globl __carla_abi_extension_error_msg
-.type __carla_abi_extension_error_msg, @function
-__carla_abi_extension_error_msg:
-.LFP15:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME15, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rax
-	movq %rax, %rsi
-	leaq -32(%rbp), %rdi
-	movq $16, %rcx
-	rep movsb
-	leaq -32(%rbp), %rax
-	movq %rax, -40(%rbp)
-	movq -40(%rbp), %rax
-	movq $8, %rcx
-	addq %rcx, %rax
-	movq %rax, -48(%rbp)
-	movq -48(%rbp), %rax
-	movq (%rax), %rax
-	movq %rax, -56(%rbp)
-	movq -56(%rbp), %rax
-	movq %rax, -64(%rbp)
-	movb $255, %al
-	movb %al, -65(%rbp)
-	movb -65(%rbp), %al
-	test %al, %al
-	jz .Lb_L9b2d93086d63
-.Lb_L9b2d93086d63:
-	movq -64(%rbp), %rax
-	jmp .LFE15
-	.set .LFRAME15, 80
-.LFE15:
-	leave
-	ret
-.size __carla_abi_extension_error_msg, . - __carla_abi_extension_error_msg
-
-.globl __carla_abi_extension_error_isnt_empty
-.type __carla_abi_extension_error_isnt_empty, @function
-__carla_abi_extension_error_isnt_empty:
-.LFP16:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME16, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rax
-	movq %rax, %rsi
-	leaq -32(%rbp), %rdi
-	movq $16, %rcx
-	rep movsb
-	leaq -32(%rbp), %rax
-	movq %rax, -40(%rbp)
-	movq -40(%rbp), %rax
-	movb (%rax), %al
-	movb %al, -41(%rbp)
-	movb -41(%rbp), %al
-	movb %al, -42(%rbp)
-	movb $255, %al
-	movb %al, -43(%rbp)
-	movb -43(%rbp), %al
-	test %al, %al
-	jz .Lb_L06a37a3d2df5
-.Lb_L06a37a3d2df5:
-	movb -42(%rbp), %al
-	jmp .LFE16
-	.set .LFRAME16, 48
-.LFE16:
-	leave
-	ret
-.size __carla_abi_extension_error_isnt_empty, . - __carla_abi_extension_error_isnt_empty
-
-.globl __carla_abi_extension_error_is_empty
-.type __carla_abi_extension_error_is_empty, @function
-__carla_abi_extension_error_is_empty:
-.LFP17:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME17, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rax
-	movq %rax, %rsi
-	leaq -32(%rbp), %rdi
-	movq $16, %rcx
-	rep movsb
-	leaq -32(%rbp), %rax
-	movq %rax, -40(%rbp)
-	movq -40(%rbp), %rax
-	movb (%rax), %al
-	movb %al, -41(%rbp)
-	movb -41(%rbp), %al
-	movb %al, -42(%rbp)
-	movb $255, %al
-	movb %al, -43(%rbp)
-	movb -43(%rbp), %al
-	test %al, %al
-	jz .Lb_L81832be6efe2
-.Lb_L81832be6efe2:
-	movb -42(%rbp), %al
-	test %al, %al
-	jz .Lb_L3e3de6e4c3cf
-	movq $0, %rax
-	jmp .LFE17
-.Lb_L3e3de6e4c3cf:
-	movq $255, %rax
-	jmp .LFE17
-	.set .LFRAME17, 48
-.LFE17:
-	leave
-	ret
-.size __carla_abi_extension_error_is_empty, . - __carla_abi_extension_error_is_empty
 .extern __carla_abi_corelib_nashj_func__start
 .extern __carla_abi_corelib_nashj_func__alloc
 .extern __carla_abi_corelib_nashj_func__dump
@@ -735,10 +994,10 @@ __carla_abi_extension_error_is_empty:
 .globl __carla_abi_extension_Nashj_init
 .type __carla_abi_extension_Nashj_init, @function
 __carla_abi_extension_Nashj_init:
-.LFP18:
+.LFP27:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME18, %rsp
+	subq $.LFRAME27, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	leaq -80(%rbp), %rdi
@@ -749,9 +1008,9 @@ __carla_abi_extension_Nashj_init:
 	movq $64, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE18
-	.set .LFRAME18, 80
-.LFE18:
+	jmp .LFE27
+	.set .LFRAME27, 80
+.LFE27:
 	leave
 	ret
 .size __carla_abi_extension_Nashj_init, . - __carla_abi_extension_Nashj_init
@@ -759,10 +1018,10 @@ __carla_abi_extension_Nashj_init:
 .globl __carla_abi_extension_Nashj_alloc
 .type __carla_abi_extension_Nashj_alloc, @function
 __carla_abi_extension_Nashj_alloc:
-.LFP19:
+.LFP28:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME19, %rsp
+	subq $.LFRAME28, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq -16(%rbp), %rsi
@@ -770,9 +1029,9 @@ __carla_abi_extension_Nashj_alloc:
 	call __carla_abi_corelib_nashj_func__alloc
 	movq %rax, -24(%rbp)
 	movq -24(%rbp), %rax
-	jmp .LFE19
-	.set .LFRAME19, 32
-.LFE19:
+	jmp .LFE28
+	.set .LFRAME28, 32
+.LFE28:
 	leave
 	ret
 .size __carla_abi_extension_Nashj_alloc, . - __carla_abi_extension_Nashj_alloc
@@ -780,17 +1039,17 @@ __carla_abi_extension_Nashj_alloc:
 .globl __carla_abi_extension_Nashj_dump
 .type __carla_abi_extension_Nashj_dump, @function
 __carla_abi_extension_Nashj_dump:
-.LFP20:
+.LFP29:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME20, %rsp
+	subq $.LFRAME29, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq -16(%rbp), %rsi
 	movq -8(%rbp), %rdi
 	call __carla_abi_corelib_nashj_func__dump
-	.set .LFRAME20, 16
-.LFE20:
+	.set .LFRAME29, 16
+.LFE29:
 	leave
 	ret
 .size __carla_abi_extension_Nashj_dump, . - __carla_abi_extension_Nashj_dump
@@ -798,15 +1057,15 @@ __carla_abi_extension_Nashj_dump:
 .globl __carla_abi_extension_Nashj_coalesce
 .type __carla_abi_extension_Nashj_coalesce, @function
 __carla_abi_extension_Nashj_coalesce:
-.LFP21:
+.LFP30:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME21, %rsp
+	subq $.LFRAME30, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rdi
 	call __carla_abi_corelib_nashj_func__coalesce
-	.set .LFRAME21, 16
-.LFE21:
+	.set .LFRAME30, 16
+.LFE30:
 	leave
 	ret
 .size __carla_abi_extension_Nashj_coalesce, . - __carla_abi_extension_Nashj_coalesce
@@ -814,15 +1073,15 @@ __carla_abi_extension_Nashj_coalesce:
 .globl __carla_abi_extension_Nashj_deinit
 .type __carla_abi_extension_Nashj_deinit, @function
 __carla_abi_extension_Nashj_deinit:
-.LFP22:
+.LFP31:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME22, %rsp
+	subq $.LFRAME31, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rdi
 	call __carla_abi_corelib_nashj_func__destroy
-	.set .LFRAME22, 16
-.LFE22:
+	.set .LFRAME31, 16
+.LFE31:
 	leave
 	ret
 .size __carla_abi_extension_Nashj_deinit, . - __carla_abi_extension_Nashj_deinit
@@ -830,10 +1089,10 @@ __carla_abi_extension_Nashj_deinit:
 .globl __carla_abi_extension_Nashj_flush
 .type __carla_abi_extension_Nashj_flush, @function
 __carla_abi_extension_Nashj_flush:
-.LFP23:
+.LFP32:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME23, %rsp
+	subq $.LFRAME32, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq -16(%rbp), %rsi
@@ -841,8 +1100,8 @@ __carla_abi_extension_Nashj_flush:
 	call __carla_abi_corelib_nashj_func__dump
 	movq -8(%rbp), %rdi
 	call __carla_abi_corelib_nashj_func__coalesce
-	.set .LFRAME23, 16
-.LFE23:
+	.set .LFRAME32, 16
+.LFE32:
 	leave
 	ret
 .size __carla_abi_extension_Nashj_flush, . - __carla_abi_extension_Nashj_flush
@@ -850,10 +1109,10 @@ __carla_abi_extension_Nashj_flush:
 .globl __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 .type __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw, @function
 __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw:
-.LFP24:
+.LFP33:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME24, %rsp
+	subq $.LFRAME33, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rax
 	movq %rax, -16(%rbp)
@@ -864,195 +1123,20 @@ __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw:
 	call __carla_abi_corelib_nashj_func__makeraw
 	movq %rax, -32(%rbp)
 	movq -32(%rbp), %rax
-	jmp .LFE24
-	.set .LFRAME24, 32
-.LFE24:
+	jmp .LFE33
+	.set .LFRAME33, 32
+.LFE33:
 	leave
 	ret
 .size __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw, . - __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
-.extern __carla_abi_corelib_rmem_func__bookkeeping_set
-.extern __carla_abi_corelib_rmem_func__bookkeeping_dump
-.extern __carla_abi_corelib_rmem_func__dump
-.extern __carla_abi_corelib_rmem_func__alloc
-
-.globl __carla_abi_extension_SafeHeap_init
-.type __carla_abi_extension_SafeHeap_init, @function
-__carla_abi_extension_SafeHeap_init:
-.LFP25:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME25, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rdi
-	call __carla_abi_corelib_rmem_func__bookkeeping_set
-	.set .LFRAME25, 16
-.LFE25:
-	leave
-	ret
-.size __carla_abi_extension_SafeHeap_init, . - __carla_abi_extension_SafeHeap_init
-
-.globl __carla_abi_extension_SafeHeap_deinit
-.type __carla_abi_extension_SafeHeap_deinit, @function
-__carla_abi_extension_SafeHeap_deinit:
-.LFP26:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME26, %rsp
-	call __carla_abi_corelib_rmem_func__bookkeeping_dump
-	.set .LFRAME26, 0
-.LFE26:
-	leave
-	ret
-.size __carla_abi_extension_SafeHeap_deinit, . - __carla_abi_extension_SafeHeap_deinit
-
-.globl __carla_abi_extension_SafeHeap_dump
-.type __carla_abi_extension_SafeHeap_dump, @function
-__carla_abi_extension_SafeHeap_dump:
-.LFP27:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME27, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rdi
-	call __carla_abi_corelib_rmem_func__dump
-	.set .LFRAME27, 16
-.LFE27:
-	leave
-	ret
-.size __carla_abi_extension_SafeHeap_dump, . - __carla_abi_extension_SafeHeap_dump
-
-.globl __carla_abi_extension_SafeHeap_alloc
-.type __carla_abi_extension_SafeHeap_alloc, @function
-__carla_abi_extension_SafeHeap_alloc:
-.LFP28:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME28, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rdi
-	call __carla_abi_corelib_rmem_func__alloc
-	movq %rax, -16(%rbp)
-	movq -16(%rbp), %rax
-	jmp .LFE28
-	.set .LFRAME28, 16
-.LFE28:
-	leave
-	ret
-.size __carla_abi_extension_SafeHeap_alloc, . - __carla_abi_extension_SafeHeap_alloc
-
-.globl __carla_abi_extension_SafeHeap_memcpy
-.type __carla_abi_extension_SafeHeap_memcpy, @function
-__carla_abi_extension_SafeHeap_memcpy:
-.LFP29:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME29, %rsp
-	movq %rdi, -8(%rbp)
-	movq %rsi, -16(%rbp)
-	movq %rdx, -24(%rbp)
-	movq -8(%rbp), %rax
-	movq %rax, -32(%rbp)
-	movq -16(%rbp), %rax
-	movq %rax, -40(%rbp)
-	movq -24(%rbp), %rax
-	movq %rax, -48(%rbp)
-	movq $0, %rax
-	movq %rax, -56(%rbp)
-.Lb_L1fe64c970c48:
-	movq -56(%rbp), %rax
-	movq -48(%rbp), %rcx
-	cmpq %rcx, %rax
-	setb %al
-	movb %al, -57(%rbp)
-	movb -57(%rbp), %al
-	test %al, %al
-	jz .Lb_L48c3b957cdc9
-	movq -32(%rbp), %rax
-	movq -56(%rbp), %rcx
-	addq %rcx, %rax
-	movq %rax, -72(%rbp)
-	movq -40(%rbp), %rax
-	movq -56(%rbp), %rcx
-	addq %rcx, %rax
-	movq %rax, -80(%rbp)
-	movq -80(%rbp), %rax
-	movb (%rax), %al
-	movb %al, -81(%rbp)
-	movq -72(%rbp), %rcx
-	movb -81(%rbp), %al
-	movb %al, (%rcx)
-.Lb_L75e8c329ed2c:
-	movq -56(%rbp), %rax
-	movq $1, %rcx
-	addq %rcx, %rax
-	movq %rax, -96(%rbp)
-	movq -96(%rbp), %rax
-	movq %rax, -56(%rbp)
-	jmp .Lb_L1fe64c970c48
-.Lb_L48c3b957cdc9:
-	.set .LFRAME29, 96
-.LFE29:
-	leave
-	ret
-.size __carla_abi_extension_SafeHeap_memcpy, . - __carla_abi_extension_SafeHeap_memcpy
-.extern __carla_abi_corelib_rmem_func__makeraw
-.extern __carla_abi_corelib_rmem_func__size
-
-.globl __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
-.type __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw, @function
-__carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw:
-.LFP30:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME30, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rax
-	movq %rax, -16(%rbp)
-	movq -16(%rbp), %rax
-	movq (%rax), %rax
-	movq %rax, -24(%rbp)
-	movq -24(%rbp), %rdi
-	call __carla_abi_corelib_rmem_func__makeraw
-	movq %rax, -32(%rbp)
-	movq -32(%rbp), %rax
-	jmp .LFE30
-	.set .LFRAME30, 32
-.LFE30:
-	leave
-	ret
-.size __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw, . - __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
-
-.globl __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size
-.type __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size, @function
-__carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size:
-.LFP31:
-	pushq %rbp
-	movq %rsp, %rbp
-	subq $.LFRAME31, %rsp
-	movq %rdi, -8(%rbp)
-	movq -8(%rbp), %rax
-	movq %rax, -16(%rbp)
-	movq -16(%rbp), %rax
-	movq (%rax), %rax
-	movq %rax, -24(%rbp)
-	movq -24(%rbp), %rdi
-	call __carla_abi_corelib_rmem_func__size
-	movq %rax, -32(%rbp)
-	movq -32(%rbp), %rax
-	jmp .LFE31
-	.set .LFRAME31, 32
-.LFE31:
-	leave
-	ret
-.size __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size, . - __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_size
 
 .globl __carla_abi_extension_vector_init
 .type __carla_abi_extension_vector_init, @function
 __carla_abi_extension_vector_init:
-.LFP32:
+.LFP34:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME32, %rsp
+	subq $.LFRAME34, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq -16(%rbp), %rax
@@ -1109,9 +1193,9 @@ __carla_abi_extension_vector_init:
 	movq $96, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE32
-	.set .LFRAME32, 288
-.LFE32:
+	jmp .LFE34
+	.set .LFRAME34, 288
+.LFE34:
 	leave
 	ret
 .size __carla_abi_extension_vector_init, . - __carla_abi_extension_vector_init
@@ -1119,10 +1203,10 @@ __carla_abi_extension_vector_init:
 .globl __carla_abi_extension_vector_size
 .type __carla_abi_extension_vector_size, @function
 __carla_abi_extension_vector_size:
-.LFP33:
+.LFP35:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME33, %rsp
+	subq $.LFRAME35, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rax
 	movq %rax, %rsi
@@ -1144,8 +1228,8 @@ __carla_abi_extension_vector_size:
 	movb %al, -145(%rbp)
 	movb -145(%rbp), %al
 	test %al, %al
-	jz .Lb_Lf266d0d8457a
-.Lb_Lf266d0d8457a:
+	jz .Lb_L678e26168969
+.Lb_L678e26168969:
 	leaq -144(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 	movq %rax, -160(%rbp)
@@ -1157,9 +1241,9 @@ __carla_abi_extension_vector_size:
 	movl -172(%rbp), %eax
 	movq %rax, -184(%rbp)
 	movq -184(%rbp), %rax
-	jmp .LFE33
-	.set .LFRAME33, 192
-.LFE33:
+	jmp .LFE35
+	.set .LFRAME35, 192
+.LFE35:
 	leave
 	ret
 .size __carla_abi_extension_vector_size, . - __carla_abi_extension_vector_size
@@ -1167,10 +1251,10 @@ __carla_abi_extension_vector_size:
 .globl __carla_abi_extension_vector_deinit
 .type __carla_abi_extension_vector_deinit, @function
 __carla_abi_extension_vector_deinit:
-.LFP34:
+.LFP36:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME34, %rsp
+	subq $.LFRAME36, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rax
 	movq %rax, %rsi
@@ -1197,8 +1281,8 @@ __carla_abi_extension_vector_deinit:
 	movb %al, -217(%rbp)
 	movb -217(%rbp), %al
 	test %al, %al
-	jz .Lb_L58ff0a31c707
-.Lb_L58ff0a31c707:
+	jz .Lb_L4e837ffaab4f
+.Lb_L4e837ffaab4f:
 	leaq -216(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 	movq %rax, -232(%rbp)
@@ -1211,7 +1295,7 @@ __carla_abi_extension_vector_deinit:
 	movq %rax, -256(%rbp)
 	movq $0, %rax
 	movq %rax, -264(%rbp)
-.Lb_Lbc40d99f0c69:
+.Lb_L3dd541764ffe:
 	movq -264(%rbp), %rax
 	movq -256(%rbp), %rcx
 	cmpq %rcx, %rax
@@ -1219,7 +1303,7 @@ __carla_abi_extension_vector_deinit:
 	movb %al, -265(%rbp)
 	movb -265(%rbp), %al
 	test %al, %al
-	jz .Lb_Lacaf25765303
+	jz .Lb_L34a32e0951c0
 	movq -264(%rbp), %rax
 	movq $8, %rcx
 	imulq %rcx, %rax
@@ -1233,19 +1317,19 @@ __carla_abi_extension_vector_deinit:
 	movq %rax, -296(%rbp)
 	movq -296(%rbp), %rdi
 	call __carla_abi_extension_SafeHeap_dump
-.Lb_Lc3e446f77986:
+.Lb_L087d241bdc93:
 	movq -264(%rbp), %rax
 	movq $1, %rcx
 	addq %rcx, %rax
 	movq %rax, -304(%rbp)
 	movq -304(%rbp), %rax
 	movq %rax, -264(%rbp)
-	jmp .Lb_Lbc40d99f0c69
-.Lb_Lacaf25765303:
+	jmp .Lb_L3dd541764ffe
+.Lb_L34a32e0951c0:
 	leaq -192(%rbp), %rdi
 	call __carla_abi_extension_Nashj_deinit
-	.set .LFRAME34, 304
-.LFE34:
+	.set .LFRAME36, 304
+.LFE36:
 	leave
 	ret
 .size __carla_abi_extension_vector_deinit, . - __carla_abi_extension_vector_deinit
@@ -1253,10 +1337,10 @@ __carla_abi_extension_vector_deinit:
 .globl __carla_abi_extension_vector_allocation_size
 .type __carla_abi_extension_vector_allocation_size, @function
 __carla_abi_extension_vector_allocation_size:
-.LFP35:
+.LFP37:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME35, %rsp
+	subq $.LFRAME37, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rax
 	movq %rax, %rsi
@@ -1278,12 +1362,12 @@ __carla_abi_extension_vector_allocation_size:
 	movb %al, -145(%rbp)
 	movb -145(%rbp), %al
 	test %al, %al
-	jz .Lb_L66b2d26a5093
-.Lb_L66b2d26a5093:
+	jz .Lb_Lb149df588cf4
+.Lb_Lb149df588cf4:
 	movq -144(%rbp), %rax
-	jmp .LFE35
-	.set .LFRAME35, 160
-.LFE35:
+	jmp .LFE37
+	.set .LFRAME37, 160
+.LFE37:
 	leave
 	ret
 .size __carla_abi_extension_vector_allocation_size, . - __carla_abi_extension_vector_allocation_size
@@ -1291,10 +1375,10 @@ __carla_abi_extension_vector_allocation_size:
 .globl __carla_abi_extension_vector_push
 .type __carla_abi_extension_vector_push, @function
 __carla_abi_extension_vector_push:
-.LFP36:
+.LFP38:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME36, %rsp
+	subq $.LFRAME38, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq %rdx, %r11
@@ -1340,8 +1424,8 @@ __carla_abi_extension_vector_push:
 	movb %al, -209(%rbp)
 	movb -209(%rbp), %al
 	test %al, %al
-	jz .Lb_L377a0ef5d5f9
-.Lb_L377a0ef5d5f9:
+	jz .Lb_L89a86d9de9e2
+.Lb_L89a86d9de9e2:
 	leaq -184(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 	movq %rax, -224(%rbp)
@@ -1361,7 +1445,7 @@ __carla_abi_extension_vector_push:
 	movb %al, -257(%rbp)
 	movb -257(%rbp), %al
 	test %al, %al
-	jz .Lb_Lb788f2228187
+	jz .Lb_L915268873bfc
 	.pushsection .rodata.str1.1,"aMS",@progbits,1
 	.Lstr2:
 	.byte 86, 101, 99, 116, 111, 114, 32, 105, 115, 32, 97, 108, 114, 101, 97, 100
@@ -1377,8 +1461,8 @@ __carla_abi_extension_vector_push:
 	movq $16, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE36
-.Lb_Lb788f2228187:
+	jmp .LFE38
+.Lb_L915268873bfc:
 	movq -232(%rbp), %rax
 	movl (%rax), %eax
 	movl %eax, -292(%rbp)
@@ -1412,7 +1496,7 @@ __carla_abi_extension_vector_push:
 	movb %al, -345(%rbp)
 	movb -345(%rbp), %al
 	test %al, %al
-	jz .Lb_L5fddde4f76b7
+	jz .Lb_L47c48c9c0953
 	.pushsection .rodata.str1.1,"aMS",@progbits,1
 	.Lstr3:
 	.byte 73, 110, 118, 97, 108, 105, 100, 32, 115, 116, 114, 101, 97, 109, 32, 114
@@ -1429,8 +1513,8 @@ __carla_abi_extension_vector_push:
 	movq $16, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE36
-.Lb_L5fddde4f76b7:
+	jmp .LFE38
+.Lb_L47c48c9c0953:
 	movq -320(%rbp), %rdi
 	call __carla_abi_extension_SafeHeap_alloc
 	movq %rax, -392(%rbp)
@@ -1445,7 +1529,7 @@ __carla_abi_extension_vector_push:
 	movq %rax, -424(%rbp)
 	movq $0, %rax
 	movq %rax, -432(%rbp)
-.Lb_L40872343e236:
+.Lb_L08c2fcc7d916:
 	movq -432(%rbp), %rax
 	movq -424(%rbp), %rcx
 	cmpq %rcx, %rax
@@ -1453,7 +1537,7 @@ __carla_abi_extension_vector_push:
 	movb %al, -433(%rbp)
 	movb -433(%rbp), %al
 	test %al, %al
-	jz .Lb_L39c1631b13a7
+	jz .Lb_Lda8a47b9b5ef
 	movq -416(%rbp), %rax
 	movq -432(%rbp), %rcx
 	addq %rcx, %rax
@@ -1468,15 +1552,15 @@ __carla_abi_extension_vector_push:
 	movq -448(%rbp), %rcx
 	movb -457(%rbp), %al
 	movb %al, (%rcx)
-.Lb_L1701f679d8d9:
+.Lb_L379d182d01f4:
 	movq -432(%rbp), %rax
 	movq $1, %rcx
 	addq %rcx, %rax
 	movq %rax, -472(%rbp)
 	movq -472(%rbp), %rax
 	movq %rax, -432(%rbp)
-	jmp .Lb_L40872343e236
-.Lb_L39c1631b13a7:
+	jmp .Lb_L08c2fcc7d916
+.Lb_Lda8a47b9b5ef:
 	leaq -208(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 	movq %rax, -480(%rbp)
@@ -1500,9 +1584,9 @@ __carla_abi_extension_vector_push:
 	movq $16, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE36
-	.set .LFRAME36, 528
-.LFE36:
+	jmp .LFE38
+	.set .LFRAME38, 528
+.LFE38:
 	leave
 	ret
 .size __carla_abi_extension_vector_push, . - __carla_abi_extension_vector_push
@@ -1510,10 +1594,10 @@ __carla_abi_extension_vector_push:
 .globl __carla_abi_extension_vector_get
 .type __carla_abi_extension_vector_get, @function
 __carla_abi_extension_vector_get:
-.LFP37:
+.LFP39:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME37, %rsp
+	subq $.LFRAME39, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq %rdx, -24(%rbp)
@@ -1546,8 +1630,8 @@ __carla_abi_extension_vector_get:
 	movb %al, -185(%rbp)
 	movb -185(%rbp), %al
 	test %al, %al
-	jz .Lb_L26c190936b0b
-.Lb_L26c190936b0b:
+	jz .Lb_L4a4153b03d92
+.Lb_L4a4153b03d92:
 	movq -16(%rbp), %rdi
 	call __carla_abi_extension_vector_size
 	movq %rax, -200(%rbp)
@@ -1558,7 +1642,7 @@ __carla_abi_extension_vector_get:
 	movb %al, -201(%rbp)
 	movb -201(%rbp), %al
 	test %al, %al
-	jz .Lb_L483f87bb6f82
+	jz .Lb_Ld455b89c69eb
 	leaq -224(%rbp), %rdi
 	call __carla_abi_extension_stream_make
 	.pushsection .rodata.str1.1,"aMS",@progbits,1
@@ -1587,8 +1671,8 @@ __carla_abi_extension_vector_get:
 	movq $32, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE37
-.Lb_L483f87bb6f82:
+	jmp .LFE39
+.Lb_Ld455b89c69eb:
 	leaq -184(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 	movq %rax, -296(%rbp)
@@ -1632,9 +1716,9 @@ __carla_abi_extension_vector_get:
 	movq $32, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE37
-	.set .LFRAME37, 416
-.LFE37:
+	jmp .LFE39
+	.set .LFRAME39, 416
+.LFE39:
 	leave
 	ret
 .size __carla_abi_extension_vector_get, . - __carla_abi_extension_vector_get
@@ -1642,10 +1726,10 @@ __carla_abi_extension_vector_get:
 .globl __carla_abi_extension_vector_pop
 .type __carla_abi_extension_vector_pop, @function
 __carla_abi_extension_vector_pop:
-.LFP38:
+.LFP40:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME38, %rsp
+	subq $.LFRAME40, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq -16(%rbp), %rax
@@ -1677,8 +1761,8 @@ __carla_abi_extension_vector_pop:
 	movb %al, -169(%rbp)
 	movb -169(%rbp), %al
 	test %al, %al
-	jz .Lb_L68fdce3e478d
-.Lb_L68fdce3e478d:
+	jz .Lb_Lc499bbdb1a90
+.Lb_Lc499bbdb1a90:
 	leaq -144(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 	movq %rax, -184(%rbp)
@@ -1698,7 +1782,7 @@ __carla_abi_extension_vector_pop:
 	movb %al, -217(%rbp)
 	movb -217(%rbp), %al
 	test %al, %al
-	jz .Lb_Lb370ebef7545
+	jz .Lb_Lc9ed38b6bafa
 	leaq -240(%rbp), %rdi
 	call __carla_abi_extension_stream_make
 	.pushsection .rodata.str1.1,"aMS",@progbits,1
@@ -1723,8 +1807,8 @@ __carla_abi_extension_vector_pop:
 	movq $32, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE38
-.Lb_Lb370ebef7545:
+	jmp .LFE40
+.Lb_Lc9ed38b6bafa:
 	leaq -168(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 	movq %rax, -312(%rbp)
@@ -1784,9 +1868,9 @@ __carla_abi_extension_vector_pop:
 	movq $32, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE38
-	.set .LFRAME38, 464
-.LFE38:
+	jmp .LFE40
+	.set .LFRAME40, 464
+.LFE40:
 	leave
 	ret
 .size __carla_abi_extension_vector_pop, . - __carla_abi_extension_vector_pop
@@ -1794,10 +1878,10 @@ __carla_abi_extension_vector_pop:
 .globl __carla_abi_extension_vector_pop_first
 .type __carla_abi_extension_vector_pop_first, @function
 __carla_abi_extension_vector_pop_first:
-.LFP39:
+.LFP41:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME39, %rsp
+	subq $.LFRAME41, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq -16(%rbp), %rax
@@ -1829,8 +1913,8 @@ __carla_abi_extension_vector_pop_first:
 	movb %al, -169(%rbp)
 	movb -169(%rbp), %al
 	test %al, %al
-	jz .Lb_Lecf3328ab192
-.Lb_Lecf3328ab192:
+	jz .Lb_L2f1c59d7b8b9
+.Lb_L2f1c59d7b8b9:
 	leaq -144(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 	movq %rax, -184(%rbp)
@@ -1850,7 +1934,7 @@ __carla_abi_extension_vector_pop_first:
 	movb %al, -217(%rbp)
 	movb -217(%rbp), %al
 	test %al, %al
-	jz .Lb_L1fdebf024c39
+	jz .Lb_L92e05c7d3079
 	leaq -240(%rbp), %rdi
 	call __carla_abi_extension_stream_make
 	leaq .Lstr5(%rip), %rax
@@ -1871,8 +1955,8 @@ __carla_abi_extension_vector_pop_first:
 	movq $32, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE39
-.Lb_L1fdebf024c39:
+	jmp .LFE41
+.Lb_L92e05c7d3079:
 	leaq -168(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_Nashj_Qitah_to_raw
 	movq %rax, -312(%rbp)
@@ -1905,7 +1989,7 @@ __carla_abi_extension_vector_pop_first:
 	movq %rax, -400(%rbp)
 	movq $0, %rax
 	movq %rax, -408(%rbp)
-.Lb_L994aa442d5e1:
+.Lb_L7903a614b982:
 	movq -408(%rbp), %rax
 	movq -400(%rbp), %rcx
 	cmpq %rcx, %rax
@@ -1913,7 +1997,7 @@ __carla_abi_extension_vector_pop_first:
 	movb %al, -409(%rbp)
 	movb -409(%rbp), %al
 	test %al, %al
-	jz .Lb_L3eedd9668058
+	jz .Lb_L3889c5ae9000
 	movq -408(%rbp), %rax
 	movq $8, %rcx
 	imulq %rcx, %rax
@@ -1940,15 +2024,15 @@ __carla_abi_extension_vector_pop_first:
 	movq -432(%rbp), %rcx
 	movq -464(%rbp), %rax
 	movq %rax, (%rcx)
-.Lb_L66428e0d156f:
+.Lb_L920995b79bb0:
 	movq -408(%rbp), %rax
 	movq $1, %rcx
 	addq %rcx, %rax
 	movq %rax, -472(%rbp)
 	movq -472(%rbp), %rax
 	movq %rax, -408(%rbp)
-	jmp .Lb_L994aa442d5e1
-.Lb_L3eedd9668058:
+	jmp .Lb_L7903a614b982
+.Lb_L3889c5ae9000:
 	movq -192(%rbp), %rax
 	movl (%rax), %eax
 	movl %eax, -476(%rbp)
@@ -1974,9 +2058,9 @@ __carla_abi_extension_vector_pop_first:
 	movq $32, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE39
-	.set .LFRAME39, 528
-.LFE39:
+	jmp .LFE41
+	.set .LFRAME41, 528
+.LFE41:
 	leave
 	ret
 .size __carla_abi_extension_vector_pop_first, . - __carla_abi_extension_vector_pop_first
@@ -1984,10 +2068,10 @@ __carla_abi_extension_vector_pop_first:
 .globl __carla_abi_extension_CRoutine_ready
 .type __carla_abi_extension_CRoutine_ready, @function
 __carla_abi_extension_CRoutine_ready:
-.LFP40:
+.LFP42:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME40, %rsp
+	subq $.LFRAME42, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq $56, %rax
@@ -2009,12 +2093,12 @@ __carla_abi_extension_CRoutine_ready:
 	movb %al, -81(%rbp)
 	movb -81(%rbp), %al
 	test %al, %al
-	jz .Lb_Lcc0ea67fb4f7
+	jz .Lb_Ld51804a49a3e
 	leaq -80(%rbp), %rdi
 	call __carla_abi_extension_error_panic
-.Lb_Lcc0ea67fb4f7:
-	.set .LFRAME40, 96
-.LFE40:
+.Lb_Ld51804a49a3e:
+	.set .LFRAME42, 96
+.LFE42:
 	leave
 	ret
 .size __carla_abi_extension_CRoutine_ready, . - __carla_abi_extension_CRoutine_ready
@@ -2023,10 +2107,10 @@ __carla_abi_extension_CRoutine_ready:
 .globl __carla_abi_extension_CRoutines_from
 .type __carla_abi_extension_CRoutines_from, @function
 __carla_abi_extension_CRoutines_from:
-.LFP41:
+.LFP43:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME41, %rsp
+	subq $.LFRAME43, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq %rdx, -24(%rbp)
@@ -2098,9 +2182,9 @@ __carla_abi_extension_CRoutines_from:
 	movq $128, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE41
-	.set .LFRAME41, 368
-.LFE41:
+	jmp .LFE43
+	.set .LFRAME43, 368
+.LFE43:
 	leave
 	ret
 .size __carla_abi_extension_CRoutines_from, . - __carla_abi_extension_CRoutines_from
@@ -2108,10 +2192,10 @@ __carla_abi_extension_CRoutines_from:
 .globl __carla_abi_extension_CRoutines_yield
 .type __carla_abi_extension_CRoutines_yield, @function
 __carla_abi_extension_CRoutines_yield:
-.LFP42:
+.LFP44:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME42, %rsp
+	subq $.LFRAME44, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rax
 	movq %rax, %rsi
@@ -2165,8 +2249,8 @@ __carla_abi_extension_CRoutines_yield:
 	movb %al, -345(%rbp)
 	movb -345(%rbp), %al
 	test %al, %al
-	jz .Lb_Lffdfcb6451d2
-.Lb_Lffdfcb6451d2:
+	jz .Lb_L935df0e03bba
+.Lb_L935df0e03bba:
 	leaq -216(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
 	movq %rax, -360(%rbp)
@@ -2233,8 +2317,8 @@ __carla_abi_extension_CRoutines_yield:
 	movb %al, -585(%rbp)
 	movb -585(%rbp), %al
 	test %al, %al
-	jz .Lb_L9798dfc4e37e
-.Lb_L9798dfc4e37e:
+	jz .Lb_L2e2d2a1fd6ec
+.Lb_L2e2d2a1fd6ec:
 	leaq -536(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
 	movq %rax, -600(%rbp)
@@ -2266,8 +2350,8 @@ __carla_abi_extension_CRoutines_yield:
 	movq -656(%rbp), %rsi
 	movq -640(%rbp), %rdi
 	call __carla_routines_ctx_switch
-	.set .LFRAME42, 656
-.LFE42:
+	.set .LFRAME44, 656
+.LFE44:
 	leave
 	ret
 .size __carla_abi_extension_CRoutines_yield, . - __carla_abi_extension_CRoutines_yield
@@ -2275,10 +2359,10 @@ __carla_abi_extension_CRoutines_yield:
 .globl __carla_croutines_entry
 .type __carla_croutines_entry, @function
 __carla_croutines_entry:
-.LFP43:
+.LFP45:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME43, %rsp
+	subq $.LFRAME45, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rax
 	movq %rax, %rsi
@@ -2332,8 +2416,8 @@ __carla_croutines_entry:
 	movb %al, -345(%rbp)
 	movb -345(%rbp), %al
 	test %al, %al
-	jz .Lb_Ldd41253c948d
-.Lb_Ldd41253c948d:
+	jz .Lb_L17bebbcfd090
+.Lb_L17bebbcfd090:
 	leaq -216(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
 	movq %rax, -360(%rbp)
@@ -2400,8 +2484,8 @@ __carla_croutines_entry:
 	movb %al, -585(%rbp)
 	movb -585(%rbp), %al
 	test %al, %al
-	jz .Lb_La7a7999577a2
-.Lb_La7a7999577a2:
+	jz .Lb_L30ecf8d52e3f
+.Lb_L30ecf8d52e3f:
 	leaq -512(%rbp), %rsi
 	movq -8(%rbp), %rdi
 	movq -480(%rbp), %r11
@@ -2457,8 +2541,8 @@ __carla_croutines_entry:
 	movq -696(%rbp), %rsi
 	movq -456(%rbp), %rdi
 	call __carla_routines_ctx_switch
-	.set .LFRAME43, 704
-.LFE43:
+	.set .LFRAME45, 704
+.LFE45:
 	leave
 	ret
 .size __carla_croutines_entry, . - __carla_croutines_entry
@@ -2466,10 +2550,10 @@ __carla_croutines_entry:
 .globl __carla_abi_extension_CRoutine_from
 .type __carla_abi_extension_CRoutine_from, @function
 __carla_abi_extension_CRoutine_from:
-.LFP44:
+.LFP46:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME44, %rsp
+	subq $.LFRAME46, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq %rdx, -24(%rbp)
@@ -2525,9 +2609,9 @@ __carla_abi_extension_CRoutine_from:
 	movq $56, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE44
-	.set .LFRAME44, 176
-.LFE44:
+	jmp .LFE46
+	.set .LFRAME46, 176
+.LFE46:
 	leave
 	ret
 .size __carla_abi_extension_CRoutine_from, . - __carla_abi_extension_CRoutine_from
@@ -2535,10 +2619,10 @@ __carla_abi_extension_CRoutine_from:
 .globl __carla_abi_extension_CRoutine_from_stream
 .type __carla_abi_extension_CRoutine_from_stream, @function
 __carla_abi_extension_CRoutine_from_stream:
-.LFP45:
+.LFP47:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME45, %rsp
+	subq $.LFRAME47, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, %r11
 	movq 0(%r11), %rax
@@ -2565,8 +2649,8 @@ __carla_abi_extension_CRoutine_from_stream:
 	movb %al, -81(%rbp)
 	movb -81(%rbp), %al
 	test %al, %al
-	jz .Lb_L4674fb688791
-.Lb_L4674fb688791:
+	jz .Lb_Le2b1b3832e9e
+.Lb_Le2b1b3832e9e:
 	movq -80(%rbp), %rax
 	movq %rax, -96(%rbp)
 	movq -96(%rbp), %rax
@@ -2574,14 +2658,16 @@ __carla_abi_extension_CRoutine_from_stream:
 	leaq -160(%rbp), %rdi
 	movq $56, %rcx
 	rep movsb
+	leaq -32(%rbp), %rdi
+	call __carla_abi_extension_stream_dump
 	movq -8(%rbp), %rdi
 	leaq -160(%rbp), %rsi
 	movq $56, %rcx
 	rep movsb
 	movq -8(%rbp), %rax
-	jmp .LFE45
-	.set .LFRAME45, 160
-.LFE45:
+	jmp .LFE47
+	.set .LFRAME47, 160
+.LFE47:
 	leave
 	ret
 .size __carla_abi_extension_CRoutine_from_stream, . - __carla_abi_extension_CRoutine_from_stream
@@ -2589,10 +2675,10 @@ __carla_abi_extension_CRoutine_from_stream:
 .globl __carla_abi_extension_CRoutine_spawn
 .type __carla_abi_extension_CRoutine_spawn, @function
 __carla_abi_extension_CRoutine_spawn:
-.LFP46:
+.LFP48:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME46, %rsp
+	subq $.LFRAME48, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, -16(%rbp)
 	movq %rdx, %r11
@@ -2652,8 +2738,8 @@ __carla_abi_extension_CRoutine_spawn:
 	movb %al, -361(%rbp)
 	movb -361(%rbp), %al
 	test %al, %al
-	jz .Lb_L4ca21ea22492
-.Lb_L4ca21ea22492:
+	jz .Lb_Lfa2b33cc3d8d
+.Lb_Lfa2b33cc3d8d:
 	leaq -360(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
 	movq %rax, -376(%rbp)
@@ -2817,8 +2903,8 @@ __carla_abi_extension_CRoutine_spawn:
 	leaq -336(%rbp), %rsi
 	leaq -768(%rbp), %rdi
 	call __carla_abi_extension_CRoutine_ready
-	.set .LFRAME46, 768
-.LFE46:
+	.set .LFRAME48, 768
+.LFE48:
 	leave
 	ret
 .size __carla_abi_extension_CRoutine_spawn, . - __carla_abi_extension_CRoutine_spawn
@@ -2826,10 +2912,10 @@ __carla_abi_extension_CRoutine_spawn:
 .globl __carla_abi_extension_CRoutine_join
 .type __carla_abi_extension_CRoutine_join, @function
 __carla_abi_extension_CRoutine_join:
-.LFP47:
+.LFP49:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME47, %rsp
+	subq $.LFRAME49, %rsp
 	movq %rdi, -8(%rbp)
 	movq -8(%rbp), %rax
 	movq %rax, %rsi
@@ -2883,9 +2969,9 @@ __carla_abi_extension_CRoutine_join:
 	movb %al, -345(%rbp)
 	movb -345(%rbp), %al
 	test %al, %al
-	jz .Lb_Lcbf562545d51
-.Lb_Lcbf562545d51:
-.Lb_Le50e64b7af36:
+	jz .Lb_L18caf1306616
+.Lb_L18caf1306616:
+.Lb_L66f142102cce:
 	leaq -384(%rbp), %rdi
 	leaq -320(%rbp), %rsi
 	call __carla_abi_extension_vector_pop_first
@@ -2910,7 +2996,7 @@ __carla_abi_extension_CRoutine_join:
 	movb %al, -449(%rbp)
 	movb -449(%rbp), %al
 	test %al, %al
-	jz .Lb_L6dd02bfaa7e9
+	jz .Lb_Ld2ccf3114497
 	leaq -512(%rbp), %rdi
 	leaq -416(%rbp), %rsi
 	call __carla_abi_extension_CRoutine_from_stream
@@ -2977,8 +3063,8 @@ __carla_abi_extension_CRoutine_join:
 	movb %al, -665(%rbp)
 	movb -665(%rbp), %al
 	test %al, %al
-	jz .Lb_L4d275086ffb6
-.Lb_L4d275086ffb6:
+	jz .Lb_Lf2f69d12b37d
+.Lb_Lf2f69d12b37d:
 	leaq -616(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
 	movq %rax, -680(%rbp)
@@ -3017,7 +3103,7 @@ __carla_abi_extension_CRoutine_join:
 	movb %al, -737(%rbp)
 	movb -737(%rbp), %al
 	test %al, %al
-	jz .Lb_Le43cececec1d
+	jz .Lb_Ldae22a45a6c3
 	leaq -216(%rbp), %rdi
 	call __carla_abi_extension___carla_abi_extension_SafeHeap_Cell_to_raw
 	movq %rax, -752(%rbp)
@@ -3026,7 +3112,7 @@ __carla_abi_extension_CRoutine_join:
 	leaq -320(%rbp), %rsi
 	movq -760(%rbp), %rdi
 	call __carla_abi_extension_CRoutine_ready
-.Lb_Le43cececec1d:
+.Lb_Ldae22a45a6c3:
 	movq -688(%rbp), %rax
 	movq $0, %rcx
 	addq %rcx, %rax
@@ -3041,14 +3127,14 @@ __carla_abi_extension_CRoutine_join:
 	movb %al, -777(%rbp)
 	movb -777(%rbp), %al
 	test %al, %al
-	jz .Lb_L28cb23411c0e
+	jz .Lb_L26a0229f5a8a
 	movq -640(%rbp), %rdi
 	call __carla_abi_extension_SafeHeap_dump
 	movq -616(%rbp), %rdi
 	call __carla_abi_extension_SafeHeap_dump
-.Lb_L28cb23411c0e:
-	jmp .Lb_Le50e64b7af36
-.Lb_L6dd02bfaa7e9:
+.Lb_L26a0229f5a8a:
+	jmp .Lb_L66f142102cce
+.Lb_Ld2ccf3114497:
 	movq -216(%rbp), %rdi
 	call __carla_abi_extension_SafeHeap_dump
 	movq -192(%rbp), %rdi
@@ -3057,8 +3143,8 @@ __carla_abi_extension_CRoutine_join:
 	call __carla_abi_extension_SafeHeap_dump
 	leaq -320(%rbp), %rdi
 	call __carla_abi_extension_vector_deinit
-	.set .LFRAME47, 784
-.LFE47:
+	.set .LFRAME49, 784
+.LFE49:
 	leave
 	ret
 .size __carla_abi_extension_CRoutine_join, . - __carla_abi_extension_CRoutine_join
@@ -3066,10 +3152,10 @@ __carla_abi_extension_CRoutine_join:
 .globl test
 .type test, @function
 test:
-.LFP48:
+.LFP50:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME48, %rsp
+	subq $.LFRAME50, %rsp
 	movq %rdi, -8(%rbp)
 	movq %rsi, %r11
 	movq 0(%r11), %rax
@@ -3091,34 +3177,34 @@ test:
 	movb %al, -65(%rbp)
 	movb -65(%rbp), %al
 	test %al, %al
-	jz .Lb_Lb3c37f9ca3c0
-.Lb_Lb3c37f9ca3c0:
+	jz .Lb_L1d46acee4ab8
+.Lb_L1d46acee4ab8:
 	movq $0, %rax
 	movq %rax, -80(%rbp)
-.Lb_Ld35acfa2d653:
+.Lb_Lb6864f6cfb54:
 	movq -80(%rbp), %rax
-	movq $3, %rcx
+	movq $48, %rcx
 	cmpq %rcx, %rax
 	setl %al
 	movb %al, -81(%rbp)
 	movb -81(%rbp), %al
 	test %al, %al
-	jz .Lb_L6049f1cbcae7
+	jz .Lb_Leecb3975d46e
 	leaq -64(%rbp), %rdi
 	call __carla_abi_extension_byte_P_print
 	movq -8(%rbp), %rdi
 	call __carla_abi_extension_CRoutines_yield
-.Lb_Lab35303062a2:
+.Lb_L21d5a35e5d83:
 	movq -80(%rbp), %rax
 	movq $1, %rcx
 	addq %rcx, %rax
 	movq %rax, -96(%rbp)
 	movq -96(%rbp), %rax
 	movq %rax, -80(%rbp)
-	jmp .Lb_Ld35acfa2d653
-.Lb_L6049f1cbcae7:
-	.set .LFRAME48, 96
-.LFE48:
+	jmp .Lb_Lb6864f6cfb54
+.Lb_Leecb3975d46e:
+	.set .LFRAME50, 96
+.LFE50:
 	leave
 	ret
 .size test, . - test
@@ -3126,29 +3212,29 @@ test:
 .globl _start
 .type _start, @function
 _start:
-.LFP49:
+.LFP51:
 	xorl %ebp, %ebp
 	andq $-16, %rsp
 	movq %rsp, %rbp
-	subq $.LFRAME49, %rsp
+	subq $.LFRAME51, %rsp
 	call main
 	movq %rax, -8(%rbp)
 	movq -8(%rbp), %rdi
 	movq $60, %rax
 	syscall
 	movq %rax, -16(%rbp)
-	.set .LFRAME49, 16
-.LFE49:
+	.set .LFRAME51, 16
+.LFE51:
 	ud2
 .size _start, . - _start
 
 .globl main
 .type main, @function
 main:
-.LFP50:
+.LFP52:
 	pushq %rbp
 	movq %rsp, %rbp
-	subq $.LFRAME50, %rsp
+	subq $.LFRAME52, %rsp
 	movq $10240, %rdi
 	call __carla_abi_extension_SafeHeap_init
 	leaq -128(%rbp), %rdi
@@ -3159,7 +3245,8 @@ main:
 	movq %rax, -136(%rbp)
 	.pushsection .rodata.str1.1,"aMS",@progbits,1
 	.Lstr6:
-	.byte 73, 32, 108, 111, 118, 101, 32, 0
+	.byte 32, 32, 32, 32, 32, 32, 216, 179, 217, 133, 216, 177, 32, 216, 185, 217
+	.byte 132, 217, 137, 32, 217, 131, 217, 134, 217, 133, 217, 136, 216, 170, 10, 0
 	.popsection
 	leaq .Lstr6(%rip), %rax
 	movq %rax, -144(%rbp)
@@ -3170,44 +3257,14 @@ main:
 	movq -136(%rbp), %rsi
 	leaq -128(%rbp), %rdi
 	call __carla_abi_extension_CRoutine_spawn
-	leaq test(%rip), %rax
-	movq %rax, -168(%rbp)
-	.pushsection .rodata.str1.1,"aMS",@progbits,1
-	.Lstr7:
-	.byte 83, 97, 109, 97, 114, 0
-	.popsection
-	leaq .Lstr7(%rip), %rax
-	movq %rax, -176(%rbp)
-	leaq -192(%rbp), %rdi
-	movq -176(%rbp), %rsi
-	call __carla_abi_extension_stream_from_str
-	leaq -192(%rbp), %rdx
-	movq -168(%rbp), %rsi
-	leaq -128(%rbp), %rdi
-	call __carla_abi_extension_CRoutine_spawn
-	leaq test(%rip), %rax
-	movq %rax, -200(%rbp)
-	.pushsection .rodata.str1.1,"aMS",@progbits,1
-	.Lstr8:
-	.byte 33, 10, 0
-	.popsection
-	leaq .Lstr8(%rip), %rax
-	movq %rax, -208(%rbp)
-	leaq -224(%rbp), %rdi
-	movq -208(%rbp), %rsi
-	call __carla_abi_extension_stream_from_str
-	leaq -224(%rbp), %rdx
-	movq -200(%rbp), %rsi
-	leaq -128(%rbp), %rdi
-	call __carla_abi_extension_CRoutine_spawn
 	leaq -128(%rbp), %rdi
 	call __carla_abi_extension_CRoutine_join
 	call __carla_abi_extension_SafeHeap_deinit
 	movq $0, %rax
-	jmp .LFE50
+	jmp .LFE52
 	call __carla_abi_extension_SafeHeap_deinit
-	.set .LFRAME50, 224
-.LFE50:
+	.set .LFRAME52, 160
+.LFE52:
 	leave
 	ret
 .size main, . - main

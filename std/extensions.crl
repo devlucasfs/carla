@@ -16,11 +16,6 @@ extend byte* {
         syscall! 0x1(1, self.*, self.*.strlen());
     }
 
-    void eprint = fn(self) {
-        syscall! 0x1(1, self.*, self.*.strlen());
-        syscall! 0x3c(1);
-    }
-
     stream to_stream = fn(self) {
         return self.*.strlen(), self.*;
     }

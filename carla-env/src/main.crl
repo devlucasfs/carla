@@ -1,8 +1,9 @@
+..@import("extensions");
 ..@import("croutines");
 
 void test = fn(CRoutines* r, stream args) {
     if var _, msg := args; false {}
-    for 0..3 {
+    for 0..48 {
         msg.print();
         r.*.yield();
     }
@@ -15,9 +16,7 @@ int main = fn() {
 
     let r := CRoutines.from(CRoutineDefault.sp_size, CRoutineDefault.vec_size);
 
-    CRoutine.spawn(&r, ::test, stream.from_str("I love "));
-    CRoutine.spawn(&r, ::test, stream.from_str("Samar"));
-    CRoutine.spawn(&r, ::test, stream.from_str("!\n"));
+    CRoutine.spawn(&r, ::test, stream.from_str("      سمر على كنموت\n"));
     CRoutine.join(&r);
 
     0

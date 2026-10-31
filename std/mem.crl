@@ -5,6 +5,7 @@ extern void __carla_abi_corelib_rmem_func__bookkeeping_set = fn(uint size);
 extern void __carla_abi_corelib_rmem_func__bookkeeping_dump = fn();
 extern void __carla_abi_corelib_rmem_func__dump = fn(generic_ptr ptr);
 extern generic_ptr __carla_abi_corelib_rmem_func__alloc = fn(uint size);
+extern void __carla_abi_corelib_rmem_func__munmap = fn(generic_ptr p, uint size);
 
 using SafeHeap = |_|;
 extend SafeHeap {
@@ -17,6 +18,9 @@ extend SafeHeap {
 
     SafeHeap.Cell alloc = fn(uint size)
         -> __carla_abi_corelib_rmem_func__alloc(size) as SafeHeap.Cell;
+
+    void free_ptr = fn(generic_ptr ptr, uint size)
+        -> __carla_abi_corelib_rmem_func__munmap(ptr, size);
 
     void memcpy = fn(generic_ptr dest, generic_ptr src, uint size) {
         let dst := dest as byte*;

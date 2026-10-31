@@ -1,3 +1,9 @@
+void eprint = fn(byte* p) {
+    for var i := 0 as uint; p[i] != 0; i++ {}
+    syscall! 0x1(1, p, i);
+    syscall! 0x3c(1);
+}
+
 using error = |bool, byte*|;
 extend error {
     error from = fn(byte* str) {
@@ -10,7 +16,7 @@ extend error {
 
     void panic = fn(self) {
         if var _, msg := self.*; true {}
-        msg.eprint();
+        eprint(msg);
     }
 
     byte* msg = fn(self) {

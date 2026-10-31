@@ -206,7 +206,7 @@ mangled(mmap) (size_t length)
 }
 
 /* Unmap LENGTH bytes at PTR.  Returns 0 on success.  */
-static inline int
+inline int
 mangled(munmap) (mangled(addr) ptr, size_t length)
 {   return (int) mangled(sys_munmap)(ptr, length);
 }
