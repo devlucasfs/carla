@@ -1,4 +1,5 @@
 ..@import("stream");
+..@import("nashj");
 ..@import("errors");
 ..@import("mem");
 
@@ -68,11 +69,54 @@ extend vector {
         if var _, _, _, length, mem := self.*; true {}
 
         if i >= vector.size(self)
-            : return stream.make(), error.from("index can't be greater or equal to the vector size.\n");
+            : return stream.make(), error.from("Out of range: Index can't be greater or equal to the vector size.\n");
 
         let memptr := mem.to_raw() as SafeHeap.Cell*;
         let cell := memptr[i];
 
         return stream.from(cell.size(), cell.to_raw()), error.make();
+    }
+
+    @uncert(stream) pop = fn(self) {
+        if var _, _, _, length, mem := self.*; true {}
+
+        let len_addr := length.to_raw() as uword*;
+        let count := len_addr.* as uint;
+
+        if count == 0
+            : return stream.make(), error.from("Queue is empty");
+
+        let memptr := mem.to_raw() as SafeHeap.Cell*;
+        let index := count - 1;
+
+        let cell := memptr[index];
+        let result := stream.from(cell.size(), cell.to_raw());
+
+        len_addr.* -= 1;
+
+        return result, error.make();
+    }
+
+    @uncert(stream) pop_first = fn(self) {
+        if var _, _, _, length, mem := self.*; true {}
+
+        let len_addr := length.to_raw() as uword*;
+        let count := len_addr.* as uint;
+
+        if count == 0
+            : return stream.make(), error.from("Queue is empty");
+
+        let memptr := mem.to_raw() as SafeHeap.Cell*;
+
+        let cell := memptr[0];
+        let result := stream.from(cell.size(), cell.to_raw());
+
+        for uint i : 0..(count - 1) {
+            memptr[i] = memptr[i + 1];
+        }
+
+        len_addr.* -= 1;
+
+        return result, error.make();
     }
 }

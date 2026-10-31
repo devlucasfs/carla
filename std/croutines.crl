@@ -1,0 +1,189 @@
+..@import("extensions");
+..@import("errors");
+..@import("vector");
+..@import("mem");
+
+using CRoutineDefault = enum(
+    sp_size = expr(1024 * 64),
+    vec_size = 1024
+);
+
+using CRoutines = |uint,           -- sp size
+                   SafeHeap.Cell,  -- sched sp
+                   SafeHeap.Cell,  -- current
+                   vector,         -- queue
+                   SafeHeap.Cell|; -- pair (live, id)
+
+using CRoutineState = enum(runnable, running, waiting, dead);
+
+using CRoutine = |generic_ptr,   -- sp
+                  fn_ref,        -- fn_ref
+                  stream,        -- args
+                  SafeHeap.Cell, -- pair (state, id)
+                  SafeHeap.Cell, -- stack
+                  generic_ptr|;  -- next
+
+extend CRoutine {
+    void ready = fn(self, vector* queue) {
+        let size := sizeof(CRoutine);
+        let raw := self as byte*;
+
+        if let err := queue.*.push(stream.from(size as uint, raw)); err.isnt_empty() {
+            err.panic();
+        }
+    }
+}
+extern void __carla_routines_ctx_switch = fn(generic_ptr x, y, z);
+
+extend CRoutines {
+    CRoutines from = fn(uint sp_size, vec_size) {
+        let pair := SafeHeap.alloc(sizeof(uint) * 2);
+        let pair_ptr := pair.to_raw() as uint*;
+        pair_ptr[0] = 0; pair_ptr[1] = 1;
+
+        let v := vector.init(vec_size);
+
+        let current := SafeHeap.alloc(sizeof(CRoutine));
+
+        let sched_sp := SafeHeap.alloc(128);
+        let raw_sched_sp := sched_sp.to_raw() as generic_ptr*;
+        raw_sched_sp[0] = nullptr;
+
+        return sp_size, sched_sp, current, v, pair;
+    }
+
+    void yield = fn(self) {
+        if var sp_size, sched_sp, current, queue, pair := self.*; false {};
+
+        let raw := current.to_raw() as CRoutine*;
+
+        if var sp, ref, args, pair_2, stack, next := raw.*; false {};
+
+        let pair_ptr := pair_2.to_raw() as uint*;
+        pair_ptr[0] = CRoutineState.runnable;
+
+        let sched_sp_ptr := sched_sp.to_raw() as generic_ptr*;
+
+        __carla_routines_ctx_switch(
+            current.to_raw(),
+            sched_sp_ptr[0],
+            self as generic_ptr
+        );
+    }
+}
+
+void __carla_croutines_entry = fn(CRoutines* manager) {
+    if var sp_size, sched_sp, current, queue, pair_1 := manager.*; false {};
+
+    let raw := current.to_raw() as CRoutine*;
+    if var sp, ref, args, pair_2, stack, next := raw.*; false {}
+
+    fn ref(manager, args);
+
+    let p1_ptr := pair_1.to_raw() as uint*;
+    p1_ptr[0] -= 1;
+
+    let p2_ptr := pair_2.to_raw() as uint*;
+    p2_ptr[0] = CRoutineState.dead;
+
+    let sched_sp_ptr := sched_sp.to_raw() as generic_ptr*;
+
+    __carla_routines_ctx_switch(
+        sp as generic_ptr,
+        sched_sp_ptr[0],
+        manager as generic_ptr
+    );
+}
+
+extend CRoutine {
+    CRoutine from = fn(generic_ptr sp, fn_ref r, stream args, SafeHeap.Cell stack, uint id) {
+        let pair := SafeHeap.alloc(sizeof(uint) * 2);
+        let pair_ptr := pair.to_raw() as uint*;
+        pair_ptr[0] = CRoutineState.runnable;
+        pair_ptr[1] = id;
+
+        return sp, r, args, pair, stack, nullptr;
+    }
+
+    CRoutine from_stream = fn(stream data) {
+        if var size, raw := data; false {}
+        let source := raw as CRoutine*;
+        return source.*;
+    }
+
+    void spawn = fn(CRoutines* manager, fn_ref r, stream args) {
+        if var sp_size, sched_sp, current, queue, pair := manager.*; false {};
+
+        let pair_ptr := pair.to_raw() as uint*;
+        let live     := pair_ptr[0];
+        let id       := pair_ptr[1];
+
+        pair_ptr[1] += 1;
+
+        let stack        := SafeHeap.alloc(sp_size);
+        let stack_ptr    := stack.to_raw() + sp_size;
+        let stack_ptr_ui := stack_ptr as uint;
+        let top          := stack_ptr_ui - (stack_ptr_ui % 16) - 64;
+
+        let stack_frame := top as generic_ptr*;
+        constexpr(runa: arch == x86_64 and os == Linux) {
+            stack_frame[0] = nullptr; -- R15
+            stack_frame[1] = nullptr; -- R14
+            stack_frame[2] = nullptr; -- R13
+            stack_frame[3] = nullptr; -- R12
+            stack_frame[4] = nullptr; -- RBX
+            stack_frame[5] = nullptr; -- RBP
+            stack_frame[6] = ::__carla_croutines_entry as generic_ptr;
+            stack_frame[7] = nullptr;
+        }
+
+        let sp := stack_frame as generic_ptr;
+
+        let routine := CRoutine.from(
+            sp as generic_ptr,
+            r,
+            args,
+            stack,
+            id
+        );
+
+        routine.ready(&queue);
+    }
+
+    void join = fn(CRoutines* manager) {
+        if var sp_size, sched_sp, current, queue, e_pair := manager.*; false {};
+
+        while let val, err := queue.pop_first(); err.is_empty() {
+            let c_routine := CRoutine.from_stream(val);
+            SafeHeap.memcpy(current.to_raw(), &c_routine, sizeof(CRoutine));
+
+            if var sp, ref, args, pair, stack, next := c_routine; false {}
+
+            let pair_ptr := pair.to_raw() as uint*;
+            pair_ptr[0] = CRoutineState.running;
+
+            let sched_sp_ptr := sched_sp.to_raw() as generic_ptr*;
+
+            __carla_routines_ctx_switch(
+                sched_sp.to_raw() as generic_ptr,
+                sp as generic_ptr,
+                manager as generic_ptr
+            );
+
+            if pair_ptr[0] == CRoutineState.runnable {
+                let raw := current.to_raw() as CRoutine*;
+                raw.*.ready(&queue);
+            }
+
+            if pair_ptr[0] == CRoutineState.dead {
+                SafeHeap.dump(stack);
+                SafeHeap.dump(pair);
+            }
+        }
+
+        SafeHeap.dump(current);
+        SafeHeap.dump(sched_sp);
+        SafeHeap.dump(e_pair);
+        queue.deinit();
+    }
+}

@@ -22,4 +22,10 @@ extend error {
         if var b, _ := self.*; true {}
         b
     }
+
+    bool is_empty = fn(self) {
+        if var b, _ := self.*; true {}
+        if b : return false;
+        return true;
+    }
 }

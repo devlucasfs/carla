@@ -10,13 +10,14 @@ use crate::{
         scanner::{
             BinOP as Cmp,
             BitOp::AND,
-            Keywords::{As, Syscall},
+            Keywords::{As, Fn as FnKw, Syscall},
             MathOp::{self, Minus},
             PBB::{Bracket, Paren},
             Token,
             TokenKind::{
-                self, And, Bang, BinaryOperator, BitOperator, Bool, Comma, Dot, Float, Hexa,
-                Identifier, Integer, Keyword, MathOperator, Nil, Octal, Or, Semi, String as Str,
+                self, And, Bang, BinaryOperator, BitOperator, Bool, Comma, DoubleColon, Dot,
+                Float, Hexa, Identifier, Integer, Keyword, MathOperator, Nil, Octal, Or, Semi,
+                String as Str,
             },
         },
         symbols::{
@@ -31,6 +32,8 @@ const DEFAULT_INT: &str = "int";
 const DEFAULT_BOOL: &str = "bool";
 const DEFAULT_STR_BASE: &str = "byte";
 const DEFAULT_SYSCALL_RET: &str = "int";
+const DEFAULT_FN_REF: &str = "fn_ref";
+const DEFAULT_VOID: &str = "void";
 
 mod bp {
     pub const LOG_OR: (u8, u8) = (1, 2);
@@ -127,8 +130,11 @@ pub enum Expr {
     Boolean(bool, CarlaType),
     Nil,
     Var(String, CarlaType),
+    /// `&id` (typed pointer / untyped pointer) or `::id` (type `fn_ref`).
     Pointer(String, CarlaType),
     Call(String, Vec<Expr>, CarlaType),
+    /// `fn callee(args)`: calls the address held by a `fn_ref` value.
+    CallIndirect(Box<Expr>, Vec<Expr>, CarlaType),
     Syscall(u64, Vec<Expr>, CarlaType),
     Unary(UnOp, Box<Expr>, CarlaType),
     Binary(BinOp, Box<Expr>, Box<Expr>, CarlaType),
@@ -146,6 +152,7 @@ impl Expr {
             | Expr::Var(_, t)
             | Expr::Pointer(_, t)
             | Expr::Call(_, _, t)
+            | Expr::CallIndirect(_, _, t)
             | Expr::Syscall(_, _, t)
             | Expr::Unary(_, _, t)
             | Expr::Binary(_, _, _, t)
@@ -209,6 +216,8 @@ pub enum StepOp {
     Unary(UnOp, Operand),
     Binary(BinOp, Operand, Operand),
     Call(String, Vec<Operand>),
+    /// Call through an address (`fn_ref`): callee operand, then the arguments.
+    CallIndirect(Operand, Vec<Operand>),
     Syscall(u64, Vec<Operand>),
     Cast(Operand, CarlaType),
     Deref(Operand),
@@ -298,6 +307,11 @@ fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
             let a = lower_all(args, out);
             emit(out, t, StepOp::Call(n.clone(), a))
         }
+        Expr::CallIndirect(callee, args, t) => {
+            let c = lower(callee, out);
+            let a = lower_all(args, out);
+            emit(out, t, StepOp::CallIndirect(c, a))
+        }
         Expr::Syscall(n, args, t) => {
             let a = lower_all(args, out);
             emit(out, t, StepOp::Syscall(*n, a))
@@ -341,6 +355,21 @@ fn is_ptr(t: &CarlaType) -> bool {
         }
 }
 
+/// `true` for the generic pointer with no pointee (what `nil` has as its type).
+fn is_untyped_ptr(t: &CarlaType) -> bool {
+    t.levels > 0 && t.base.is_none() && t.tuple.is_empty()
+}
+
+/// `true` when `t` is the function-reference type (`fn_ref`), compared by its own name so
+/// it never gets mixed up with the generic pointer it is built on.
+fn is_fn_ref(t: &CarlaType) -> bool {
+    t.to_string() == DEFAULT_FN_REF
+}
+
+fn is_void(t: &CarlaType) -> bool {
+    !is_ptr(t) && matches!(morgana_of(t), Some(MorganaType::Void))
+}
+
 fn is_int_ty(t: &CarlaType) -> bool {
     !is_ptr(t) && morgana_of(t).map_or(false, |m| is_int(&m))
 }
@@ -351,6 +380,19 @@ fn is_word(t: &CarlaType) -> bool {
             morgana_of(t),
             Some(MorganaType::Integer(64)) | Some(MorganaType::UInteger(64))
         )
+}
+
+/// A function can only be turned into a `fn_ref` when it returns `void` or something that the
+/// cast rules already treat like a pointer (a pointer or a 64-bit integer, see `cast_allowed`).
+fn check_fn_ref_target(id: &str, ret: &CarlaType) -> Result<(), String> {
+    if is_void(ret) || is_ptr(ret) || is_word(ret) {
+        return Ok(());
+    }
+    Err(format!(
+        "can't take `::{id}`: it returns `{}`, and only functions returning `void`, a pointer or \
+         a 64-bit integer can be turned into a `fn_ref`",
+        ret.to_string()
+    ))
 }
 
 fn fits(v: i128, m: &MorganaType) -> bool {
@@ -415,6 +457,15 @@ fn type_binary(
     }
 
     if matches!(op, BinOp::Eq | BinOp::Ne) && is_ptr(l) && is_ptr(r) {
+        // A `fn_ref` is only comparable with another `fn_ref` (or `nil`); anything else needs `as`.
+        if is_fn_ref(l) != is_fn_ref(r) && !is_untyped_ptr(l) && !is_untyped_ptr(r) {
+            return Err(format!(
+                "can't compare `{}` with `{}` (a `fn_ref` only compares with another `fn_ref`; \
+                 use `as`)",
+                l.to_string(),
+                r.to_string()
+            ));
+        }
         return Ok(bool_ty.clone());
     }
 
@@ -624,6 +675,13 @@ fn as_pointer(ty: &CarlaType) -> Option<CarlaType> {
 fn make_deref(x: Expr) -> Result<Expr, String> {
     let ty = x.ty();
 
+    if is_fn_ref(&ty) {
+        return Err(
+            "cannot dereference a `fn_ref`; call it with `fn name(...)` (or cast it first, e.g. `as T*`)"
+                .into(),
+        );
+    }
+
     let Some(mut pointee) = as_pointer(&ty) else {
         return Err(if is_ptr(&ty) {
             format!(
@@ -665,6 +723,13 @@ fn elem_size(t: &CarlaType) -> Result<i128, String> {
 
 fn make_ptr_offset(op: BinOp, ptr: Expr, off: Expr, syms: &Symbols) -> Result<Expr, String> {
     let pty = ptr.ty();
+
+    if is_fn_ref(&pty) {
+        return Err(
+            "pointer arithmetic on a `fn_ref` isn't allowed (a function address has no elements)"
+                .into(),
+        );
+    }
 
     if matches!(ptr, Expr::Pointer(..)) {
         return Err(
@@ -848,6 +913,8 @@ pub fn starts_with(kind: &TokenKind) -> bool {
         kind,
         Identifier(_)
             | Keyword(Syscall)
+            | Keyword(FnKw)
+            | DoubleColon
             | Bool(_)
             | BitOperator(AND)
             | Integer(_)
@@ -1027,6 +1094,9 @@ impl<'a, 'c> Parser<'a, 'c> {
         match &token.kind {
             Keyword(Syscall) => self.syscall(),
 
+            DoubleColon => self.fn_address(),
+            Keyword(FnKw) => self.fn_call(),
+
             MathOperator(Minus) => make_unary(UnOp::Neg, self.expr(bp::PREFIX)?),
             Bang => make_unary(UnOp::Not, self.expr(bp::PREFIX)?),
             BitOperator(AND) => self.address_of(),
@@ -1061,6 +1131,62 @@ impl<'a, 'c> Parser<'a, 'c> {
         }
         let ty = pointer_ty(id, sym)?;
         Ok(Expr::Pointer(id.to_string(), ty))
+    }
+
+    fn fn_address(&mut self) -> Result<Expr, String> {
+        let err = "Expected a function name after `::` (e.g. `::print`)";
+        let Some(id) = self.next_identifier() else {
+            return Err(err.into());
+        };
+        let Some(sym) = self.syms.lookup(id) else {
+            return Err(format!("unknown symbol: '{id}'"));
+        };
+
+        match sym {
+            Variable(_, _, true) | ExternFunction(..) => {}
+            UnfoldFunction(..) => {
+                return Err(format!(
+                    "can't take `::{id}`: `unfold` functions are expanded in place and have no address"
+                ))
+            }
+            _ => return Err(format!("can't take `::{id}`: '{id}' isn't a function")),
+        }
+
+        let ret = symbol_ty(id, sym)?;
+        check_fn_ref_target(id, &ret)?;
+
+        let ty = builtin(self.syms, DEFAULT_FN_REF)?;
+        Ok(Expr::Pointer(id.to_string(), ty))
+    }
+
+    fn fn_call(&mut self) -> Result<Expr, String> {
+        let err = "Expected a `fn_ref` variable after `fn` (e.g. `fn callback(...)`)";
+        let Some(id) = self.next_identifier() else {
+            return Err(err.into());
+        };
+        let Some(sym) = self.syms.lookup(id) else {
+            return Err(format!("unknown symbol: '{id}'"));
+        };
+
+        let callee = match sym {
+            Variable(Some(t), _, false) => Expr::Var(id.to_string(), (**t).clone()),
+            Variable(None, _, false) => {
+                return Err(format!("variable '{id}' doesn't have a type yet"))
+            }
+            _ => return Err(err.into()),
+        };
+
+        if !is_fn_ref(&callee.ty()) {
+            return Err(format!(
+                "`fn {id}(...)` needs a `{DEFAULT_FN_REF}`, but '{id}' is a `{}` \
+                 (get one with `::name`)",
+                callee.ty().to_string()
+            ));
+        }
+
+        let args = self.arguments(&format!("fn {id}"))?;
+        let ret = builtin(self.syms, DEFAULT_VOID)?;
+        Ok(Expr::CallIndirect(Box::new(callee), args, ret))
     }
 
     fn identifier(&mut self, token: &Token, id: &str) -> Result<Expr, String> {
@@ -1283,7 +1409,7 @@ pub fn parse_place(
 /// Calls run again when a place is read AND written (`p[f()] += 1`), so they're refused there.
 fn has_side_effects(e: &Expr) -> bool {
     match e {
-        Expr::Call(..) | Expr::Syscall(..) => true,
+        Expr::Call(..) | Expr::CallIndirect(..) | Expr::Syscall(..) => true,
         Expr::Unary(_, x, _) | Expr::Cast(x, _) | Expr::Deref(x, _) => has_side_effects(x),
         Expr::Binary(_, l, r, _) => has_side_effects(l) || has_side_effects(r),
         _ => false,

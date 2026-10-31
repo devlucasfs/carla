@@ -81,7 +81,7 @@ impl Command {
             cbinds::Runa::starts(format!("local arch, os = '{arch}', '{os}'"));
 
             let nodes = visitor::work(&contexts, &mut symbols);
-            let libs: Vec<String> = vec!["nashj".into(), "rmem".into()];
+            let libs: Vec<String> = vec!["nashj".into(), "rmem".into(), "routines".into()];
             let code = Codegen::new(nodes.clone()).generate(&mut symbols, None);
             println!("\n-------------------- OUTPUT:\n\n{code}");
             let temp_file = format!("out.{}.morg", uuid::gen_hex(265));

@@ -2,22 +2,13 @@ use crate::{
     compiler::scanner::{
         BinOP::{
             Different, Equals, Greater, GreaterEqual, IterConcat, IterConcatEq, Less, LessEqual,
-        },
-        BitOp::{AND, LSH, NOT, OR, RSH, XOR},
-        Keywords::{
+        }, BitOp::{AND, LSH, NOT, OR, RSH, XOR}, Keywords::{
             As, Break, Const, Constexpr, Continue, Defer, Else, Extend, Extern, Fn, For, If, Let,
             Mut, Puts, Return, Syscall, Unfold, Using, Var, While,
+        }, MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star}, PBB::{Brace, Bracket, Paren}, TokenKind::{
+            And, Arrow, Bang, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, CompoundAssign, Dec, Dot, DoubleColon, Float, Hexa, Identifier, Inc, Integer, Keyword, MathOperator, Nil, Octal, Open, Or, RunaString, Semi, Sign, Walrus, Wild,
         },
-        MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star},
-        PBB::{Brace, Bracket, Paren},
-        TokenKind::{
-            And, Arrow, Bang, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, CompoundAssign,
-            Dec, Dot,
-            Float, Hexa, Identifier, Inc, Integer, Keyword, MathOperator, Nil, Octal, Open, Or,
-            RunaString, Semi, Sign, Walrus, Wild,
-        },
-    },
-    utils::compiler_outputs::CompilerOutputs,
+    }, utils::compiler_outputs::CompilerOutputs,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -111,6 +102,7 @@ pub enum TokenKind {
     Hexa(i128),
     Bool(bool),
     Open(PBB),
+    DoubleColon,
     Walrus,
     Inc,
     Dec,
@@ -359,6 +351,11 @@ impl Scanner {
                 b'&' if second == b'&' => {
                     i += 1;
                     self.push(And)
+                }
+
+                b':' if second == b':' => {
+                    i += 1;
+                    self.push(DoubleColon)
                 }
 
                 b'0' if second == b'x' => {

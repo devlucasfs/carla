@@ -335,7 +335,7 @@ mangled(alloc) (size_t size)
         return NULL;
     }
     if( !b->mem ) {
-        runtime_error(LIB)("The bookkeeping was not set. Call bookkeeping_set first.");
+        runtime_error(LIB)("The bookkeeping was not set. Call `init` first.");
         return NULL;
     }
     if( b->capacity - b->used < sizeof(mangled(ref)) ) {

@@ -1,8 +1,10 @@
 use crate::{
     compiler::{
         node::Node::{
-            self, Declaration, Declare, Expression, Extension, Function, Nop, STMTDefer, STMTReturn, STMTReturnTuple, Unfoldable,
-        }, patterns::{
+            self, Declaration, Declare, Expression, Extension, Function, Nop, STMTDefer,
+            STMTReturn, STMTReturnTuple, Unfoldable,
+        },
+        patterns::{
             assign::{Assign, Target},
             binding::Binding,
             conditional::Conditional,
@@ -14,14 +16,18 @@ use crate::{
             types::CarlaType,
             unfold::Unfold,
             while_loop::WhileLoop,
-        }, symbols::{
+        },
+        symbols::{
             Symbol::{ExternFunction, UnfoldFunction, Variable},
             Symbols,
-        }, visitor,
-    }, morgana::{
+        },
+        visitor,
+    },
+    morgana::{
         self, MorganaContext, MorganaExpr, MorganaGenerator,
         MorganaType::{self, Void},
-    }, utils::{compiler_outputs::CompilerOutputs, uuid},
+    },
+    utils::{compiler_outputs::CompilerOutputs, uuid},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -141,6 +147,28 @@ impl<'a> MorganaExpr<'a> {
                     self.line(format!("call {name}({})", parts.join(", ")));
                 } else {
                     self.line(format!("{t} = call {name}({})", parts.join(", ")));
+                }
+
+                (t, s.ty.clone())
+            }
+
+            StepOp::CallIndirect(callee, args) => {
+                let (target, _) = self.value(callee)?;
+
+                let mut parts = vec![];
+                for a in args {
+                    let (v, _) = self.value(a)?;
+                    parts.push(v);
+                }
+
+                let t = self.fresh();
+                if s.ty.to_morgana() == MorganaType::Void {
+                    self.line(format!("call_indirect {target}({})", parts.join(", ")));
+                } else {
+                    self.line(format!(
+                        "{t} = call_indirect {target}({})",
+                        parts.join(", ")
+                    ));
                 }
 
                 (t, s.ty.clone())
@@ -654,7 +682,6 @@ impl Codegen {
     }
 }
 
-
 impl Codegen {
     fn emit<T: ToString>(&mut self, line: T) {
         self.append(line);
@@ -723,13 +750,7 @@ impl Codegen {
         code
     }
 
-    fn loop_body(
-        &self,
-        sym: &mut Symbols,
-        nodes: &[Node],
-        cont: String,
-        brk: String,
-    ) -> String {
+    fn loop_body(&self, sym: &mut Symbols, nodes: &[Node], cont: String, brk: String) -> String {
         let mut cg = Codegen::new(nodes.to_vec());
 
         cg.extending = self.extending.clone();
@@ -786,7 +807,11 @@ impl Codegen {
 
         if c.init.is_none() {
             if let Compiled::Const(Expr::Boolean(taken, _)) = &c.cond {
-                let branch = if *taken { Some(&c.then) } else { c.otherwise.as_ref() };
+                let branch = if *taken {
+                    Some(&c.then)
+                } else {
+                    c.otherwise.as_ref()
+                };
                 if let Some(nodes) = branch {
                     let code = self.sub(sym, nodes, true, dest);
                     self.append(code);
@@ -1002,5 +1027,4 @@ impl Codegen {
         ));
         self.emit(morgana::ir_store(&s.name, &next));
     }
-
 }

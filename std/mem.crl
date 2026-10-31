@@ -1,3 +1,4 @@
+..@import("extensions");
 ..@import("errors");
 
 extern void __carla_abi_corelib_rmem_func__bookkeeping_set = fn(uint size);
@@ -16,6 +17,15 @@ extend SafeHeap {
 
     SafeHeap.Cell alloc = fn(uint size)
         -> __carla_abi_corelib_rmem_func__alloc(size) as SafeHeap.Cell;
+
+    void memcpy = fn(generic_ptr dest, generic_ptr src, uint size) {
+        let dst := dest as byte*;
+        let org := src as byte*;
+
+        for uint i : 0..size {
+            dst[i] = org[i];
+        }
+    }
 }
 
 extern byte* __carla_abi_corelib_rmem_func__makeraw = fn(SafeHeap.Cell ref);

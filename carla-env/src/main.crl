@@ -1,29 +1,24 @@
-..@import("extensions");
-..@import("nashj");
-..@import("vector");
-..@import("mem");
+..@import("croutines");
+
+void test = fn(CRoutines* r, stream args) {
+    if var _, msg := args; false {}
+    for 0..3 {
+        msg.print();
+        r.*.yield();
+    }
+}
 
 @_start
 int main = fn() {
-    SafeHeap.init(4096);
+    SafeHeap.init(1024 * 10);
     defer SafeHeap.deinit();
 
-    let vec := vector.init(1024);
-    defer vec.deinit();
+    let r := CRoutines.from(CRoutineDefault.sp_size, CRoutineDefault.vec_size);
 
-    for uint i : 0..12 {
-        if i % 2 == 0 {
-            vec.push(stream.from_str("Hello, world!\n"));
-            continue;
-        }
-        vec.push(stream.from_str("I love Samar!\n"));
-    }
-
-    for uint i : 0..vec.size() {
-        if var data, err := vec.get(i); err.isnt_empty() { err.panic(); }
-        if var _, c := data; true {}
-        c.print();
-    }
+    CRoutine.spawn(&r, ::test, stream.from_str("I love "));
+    CRoutine.spawn(&r, ::test, stream.from_str("Samar"));
+    CRoutine.spawn(&r, ::test, stream.from_str("!\n"));
+    CRoutine.join(&r);
 
     0
 }

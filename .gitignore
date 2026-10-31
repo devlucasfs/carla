@@ -1,5 +1,6 @@
 carla-env/target/bin
 /target/
+/development/
 assets/hi-there-carla.png
 assets/carla-girl.png
 benchmarks/

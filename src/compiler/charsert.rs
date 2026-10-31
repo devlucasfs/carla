@@ -9,6 +9,7 @@ pub fn append(symbols: &mut Symbols) {
     symbols.push("byte", BType(Integer(8)));
     symbols.push("void", BType(Void));
     symbols.push("generic_ptr", BType(Ptr));
+    symbols.push("fn_ref", BType(Ptr));
 
     // Todo! Size needs to be decided by the target arch
     symbols.push("int", BType(Integer(64)));
