@@ -1,3 +1,4 @@
+
 use std::{
     env,
     ffi::{CString, c_char},
@@ -6,6 +7,7 @@ use std::{
     process::Command as ProcessCommand,
     sync::mpsc,
     thread,
+    time::Instant,
 };
 
 use colorize::AnsiColor;
@@ -46,6 +48,7 @@ struct BuildResult {
     status: Option<i32>,
     stdout: String,
     stderr: String,
+    elapsed: f64,
 }
 
 pub fn morgana_worker_entry() -> bool {
@@ -87,7 +90,7 @@ pub fn morgana_worker_entry() -> bool {
 impl Command {
     pub fn build(&self, c: &CLI) {
         if c.use_ram {
-            CompilerOutputs::log("Using ram to improve Morgana comptime");
+            CompilerOutputs::log("Using RAM instead of disk for assembly generation");
         }
 
         let Ok(current_dir) = env::current_dir() else {
@@ -174,6 +177,7 @@ impl Command {
             }
         };
 
+        let total_start = Instant::now();
         let total = data.builds.len();
 
         let (tx, rx) = mpsc::channel::<(usize, BuildResult)>();
@@ -257,6 +261,8 @@ impl Command {
             let tx = tx.clone();
 
             threads.push(thread::spawn(move || {
+                let start = Instant::now();
+
                 let output = ProcessCommand::new(worker)
                     .arg("--morgana-worker")
                     .arg(&morgana_temp)
@@ -270,6 +276,8 @@ impl Command {
 
                 let _ = fs::remove_file(&morgana_temp);
 
+                let elapsed = start.elapsed().as_secs_f64();
+
                 let result = match output {
                     Ok(output) => {
                         let stdout = String::from_utf8_lossy(
@@ -281,7 +289,7 @@ impl Command {
                         ).into_owned();
 
                         let status = output.status.code();
-                        let success = status == Some(0) &&  stderr.is_empty();
+                        let success = status == Some(0) && stderr.is_empty();
 
                         BuildResult {
                             owner,
@@ -289,6 +297,7 @@ impl Command {
                             status,
                             stdout,
                             stderr,
+                            elapsed,
                         }
                     }
 
@@ -300,6 +309,7 @@ impl Command {
                         stderr: format!(
                             "Failed to start Morgana worker: {error}"
                         ),
+                        elapsed,
                     },
                 };
 
@@ -321,15 +331,17 @@ impl Command {
 
             if result.success {
                 print!(
-                    "{} {}",
+                    "{} {} {}",
                     "✔️".b_green(),
-                    result.owner
+                    result.owner,
+                    format!("{:.3}s", result.elapsed).blue()
                 );
             } else {
                 print!(
-                    "{} {}",
+                    "{} {} {}",
                     "x".b_red(),
-                    result.owner
+                    result.owner,
+                    format!("{:.3}s", result.elapsed).blue()
                 );
             }
 
@@ -362,9 +374,17 @@ impl Command {
                     status: None,
                     stdout: String::new(),
                     stderr: "Build thread panicked.".to_string(),
+                    elapsed: 0.0,
                 });
             }
         }
+
+        let total_elapsed = total_start.elapsed().as_secs_f64();
+
+        println!(
+            "Total compilation time: {}",
+            format!("{:.3}s", total_elapsed).b_green()
+        );
 
         cbinds::Runa::deinit();
 

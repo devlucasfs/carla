@@ -165,7 +165,7 @@ impl CLI {
 
                 Self {
                     enable_then: args.contains(&"--samar-then".into()),
-                    use_ram: args.contains(&"-useram".into()),
+                    use_ram: args.contains(&"--no-disk".into()),
                     message: FatalCLIMessage::None,
                     command: if command == "build" {
                         Command::Build(data)
