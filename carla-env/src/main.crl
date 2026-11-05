@@ -1,7 +1,4 @@
-const std := @import("stdlib");
-
 @_start
 int main = fn() {
-    std.io.print("Hello, world\n");
     0
 }

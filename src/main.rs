@@ -8,6 +8,10 @@ pub mod utils;
 pub mod cbinds;
 
 fn main() {
+    if crate::commands::build::morgana_worker_entry() {
+        return;
+    }
+
     /* Collect and format all data */
     let params = cli::CLI::build();
     if let FatalCLIMessage::Message(msg) = &params.message {

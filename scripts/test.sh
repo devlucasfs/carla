@@ -1,4 +1,4 @@
 cargo build
 cd carla-env
-../target/debug/rewrite build -useram --samar-then
+../target/debug/rewrite build -useram
 cd ..

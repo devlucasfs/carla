@@ -1,10 +1,10 @@
-last_change: "1793816798.+86511364"
+last_change: "1793868463.+240143689"
 
 @314412181
 target: { arch: "x86_64" os: "linux" }
 tools: [ "as", "package", "ld", "package" ]
-linking: "ld $files -o $output"
-compiling: "as -m64 $file -o $output"
+linking: "ld $file -o $output"
+compiling: "as $file -O3 -o $output"
 
 @2195352966
 target: { arch: "avr_atmega328p" os: "none" }
