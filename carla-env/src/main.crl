@@ -1,23 +1,7 @@
-..@import("extensions");
-..@import("croutines");
-
-void test = fn(CRoutines* r, stream args) {
-    if var _, msg := args; false {}
-    for 0..48 {
-        msg.print();
-        r.*.yield();
-    }
-}
+const std := @import("stdlib");
 
 @_start
 int main = fn() {
-    SafeHeap.init(1024 * 10);
-    defer SafeHeap.deinit();
-
-    let r := CRoutines.from(CRoutineDefault.sp_size, CRoutineDefault.vec_size);
-
-    CRoutine.spawn(&r, ::test, stream.from_str("      سمر على كنموت\n"));
-    CRoutine.join(&r);
-
+    std.io.print("Hello, world\n");
     0
 }

@@ -148,26 +148,26 @@ local loongarch32, loongarch64, e2k, vax, pdp11, csky, openrisc, microblaze, nio
     "kalimba"      -- Qualcomm Kalimba DSP architecture
 
 local xtensa, xtensa_lx, xtensa_lx6, xtensa_lx7, avr, avr32, msp430, pic, pic16, pic18, pic24, dspic, rl78, rx, v850, h8, m32r, m32c, tic5x, tic6x =
-    "xtensa",     -- Tensilica Xtensa architecture
-    "xtensa_lx",  -- Tensilica Xtensa LX family
-    "xtensa_lx6", -- Xtensa LX6 used in the original ESP32
-    "xtensa_lx7", -- Xtensa LX7 used in ESP32-S2 and ESP32-S3
-    "avr",        -- 8-bit AVR microcontroller architecture
-    "avr32",      -- 32-bit AVR architecture
-    "msp430",     -- Texas Instruments MSP430 microcontroller
-    "pic",        -- Microchip PIC microcontroller family
-    "pic16",      -- Microchip PIC16 family
-    "pic18",      -- Microchip PIC18 family
-    "pic24",      -- Microchip PIC24 family
-    "dspic",      -- Microchip dsPIC digital signal controller
-    "rl78",       -- Renesas RL78 microcontroller
-    "rx",         -- Renesas RX microcontroller
-    "v850",       -- Renesas V850 processor
-    "h8",         -- Hitachi/Renesas H8 processor family
-    "m32r",       -- Mitsubishi M32R architecture
-    "m32c",       -- Renesas M32C microcontroller
-    "tic5x",      -- Texas Instruments TMS320C5x DSP
-    "tic6x"       -- Texas Instruments TMS320C6x DSP
+    "xtensa",         -- Tensilica Xtensa architecture
+    "xtensa_lx",      -- Tensilica Xtensa LX family
+    "xtensa_lx6",     -- Xtensa LX6 used in the original ESP32
+    "xtensa_lx7",     -- Xtensa LX7 used in ESP32-S2 and ESP32-S3
+    "avr_atmega328p", -- 8-bit AVR microcontroller architecture
+    "avr32",          -- 32-bit AVR architecture
+    "msp430",         -- Texas Instruments MSP430 microcontroller
+    "pic",            -- Microchip PIC microcontroller family
+    "pic16",          -- Microchip PIC16 family
+    "pic18",          -- Microchip PIC18 family
+    "pic24",          -- Microchip PIC24 family
+    "dspic",          -- Microchip dsPIC digital signal controller
+    "rl78",           -- Renesas RL78 microcontroller
+    "rx",             -- Renesas RX microcontroller
+    "v850",           -- Renesas V850 processor
+    "h8",             -- Hitachi/Renesas H8 processor family
+    "m32r",           -- Mitsubishi M32R architecture
+    "m32c",           -- Renesas M32C microcontroller
+    "tic5x",          -- Texas Instruments TMS320C5x DSP
+    "tic6x"           -- Texas Instruments TMS320C6x DSP
 
 -- GPU vendors
 local gpu_nvidia, gpu_amd, gpu_intel, gpu_apple, gpu_qualcomm, gpu_arm, gpu_imagination, gpu_samsung, gpu_broadcom, gpu_microsoft, gpu_google =

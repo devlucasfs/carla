@@ -23,6 +23,7 @@ pub mod extend;
 pub mod r#extern;
 pub mod lambda;
 pub mod types;
+pub mod reg;
 pub mod ret;
 pub mod jump;
 pub mod unfold;

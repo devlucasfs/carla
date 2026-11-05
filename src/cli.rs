@@ -37,12 +37,24 @@ impl Default for FatalCLIMessage {
 pub struct CLI {
     pub message: FatalCLIMessage,
     pub command: Command,
+    pub use_ram: bool,
+    pub enable_then: bool
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BuildPattern {
     pub arch: String,
     pub os: String
+}
+
+impl BuildPattern {
+    pub fn to_string(&self) -> String {
+        if self.os.is_empty() {
+            self.arch.clone()
+        } else {
+            format!("{}-{}", self.arch, self.os)
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,10 +76,12 @@ impl CLI {
             ..Default::default()
         };
 
-        let args: Vec<_> = env::args().skip(1).collect();
-        let Some(command) = args.get(0) else {
+        let mut args: Vec<_> = env::args().skip(1).collect();
+        if args.len() == 0 {
             return default;
-        };
+        }
+
+        let command = args.remove(0);
 
         let Ok(folder) = env::current_dir() else {
             return CLI::spawn_error("Current directory can't be read.");
@@ -79,6 +93,7 @@ impl CLI {
             "version" => Self {
                 message: FatalCLIMessage::None,
                 command: Command::Version,
+                ..Default::default()
             },
 
             "build" | "run" => {
@@ -119,6 +134,7 @@ impl CLI {
                 for i in 0..builds.len() {
                     match builds.get(i) {
                         EvaValue::String(s) if s.to_lowercase() == "auto" => patterns.push(Build::Auto),
+                        EvaValue::String(s) => patterns.push(Build::Pattern(BuildPattern { arch: s.clone(), os: String::new() })),
                         EvaValue::Map(map) => {
                             let EvaValue::String(os) = map.get("os") else {
                                 return CLI::spawn_error(
@@ -148,6 +164,8 @@ impl CLI {
                 };
 
                 Self {
+                    enable_then: args.contains(&"--samar-then".into()),
+                    use_ram: args.contains(&"-useram".into()),
                     message: FatalCLIMessage::None,
                     command: if command == "build" {
                         Command::Build(data)

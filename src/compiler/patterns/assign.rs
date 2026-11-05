@@ -6,11 +6,15 @@ use crate::{
         patterns::{
             expressions::{self, BinOp, Compiled, Expr},
             incdec,
+            reg::{RegRef, Slice},
             types::CarlaType,
         },
         scanner::{
-            AssignOp, Token,
-            TokenKind::{CompoundAssign, Dec, Identifier, Inc, Semi, Sign},
+            AssignOp, Keywords, Token,
+            TokenKind::{
+                self, BinaryLiteral, CompoundAssign, Dec, Hexa, Identifier, Inc, Integer, Keyword,
+                Octal, Semi, Sign,
+            },
         },
         symbols::Symbols,
     },
@@ -24,13 +28,22 @@ pub enum Target {
     Var(String),
     /// `p.* = ...` / `p[i] = ...`: the expression is the ADDRESS (`p`, or `p + i * size`).
     Deref(Compiled),
+    /// `reg[ax, 64] = ...` / `reg[0x25] |= ...` (a `reg_t`): the whole register.
+    Reg(RegRef),
+    /// `reg[ax, 64, 0..3] = 0b01;` (a `reg_s_t`): only those bits, `value` is a binary literal.
+    RegSlice(RegRef, Slice),
 }
 
 /// Assignment to a place:
 ///
 /// ```text
-/// x = 312;      x += 123;     // x -= 12;  x *= 2;  x /= 2;  x %= 2;  x &= 1;
+/// x = 312;      x += 123;     // x -= 12;  x *= 2;  x /= 2;  x %= 2;
+/// x &= 1;  x |= 2;  x ^= 4;  x <<= 1;  x >>= 1;
 /// p.* = 1;      p[i] = q[i];  p[i] += 1;  p[i]++;
+/// ```
+///
+/// ```text
+/// reg[ax, 64] &= 0x0123;       reg[0x25] |= 0x01;       reg[ax, 64, 0..3] = 0b01;
 /// ```
 ///
 /// A compound assignment is already expanded by the parser: `x += 1` is stored as
@@ -43,7 +56,13 @@ pub struct Assign {
     pub value: Compiled,
 }
 
-/// True when the statement that starts with the identifier we just read assigns something:
+/// Can a statement that starts with this token be an assignment? The caller that picks the
+/// handler for a statement has to use this (identifiers, and `reg[...]`) before [`follows`].
+pub fn starts(kind: &TokenKind) -> bool {
+    matches!(kind, Identifier(_) | Keyword(Keywords::Reg))
+}
+
+/// True when the statement that starts with the identifier (or `reg`) we just read assigns something:
 /// there is a `=`, `+=`, ..., `++` or `--` before the next `;`. Blocks (`[..]`, `(..)`, `{..}`)
 /// are opaque, so only the top level of the statement is looked at. Nothing is consumed.
 pub fn follows(it: &mut ContextIterator<'_>) -> bool {
@@ -75,10 +94,56 @@ fn bin_op(op: &AssignOp) -> BinOp {
         AssignOp::Div => BinOp::Div,
         AssignOp::Rem => BinOp::Rem,
         AssignOp::And => BinOp::BitAnd,
+        AssignOp::Or => BinOp::BitOr,
+        AssignOp::Xor => BinOp::BitXor,
+        AssignOp::Shl => BinOp::Shl,
+        AssignOp::Shr => BinOp::Shr,
     }
 }
 
-const EXPECTED: &str = "Expected `=`, a compound operator (`+=`...), `++` or `--` after the left side of an assignment. The left side must be a variable, `p.*` or `p[i]` (`raw + i` is a value, not a place: use `raw[i] = ...`)";
+const EXPECTED: &str = "Expected `=`, a compound operator (`+=`...), `++` or `--` after the left side of an assignment. The left side must be a variable, `p.*`, `p[i]` or `reg[...]` (`raw + i` is a value, not a place: use `raw[i] = ...`)";
+
+const EXPECTED_SLICE: &str = "A `reg[.., lo..hi]` slice is set with `=` and a binary literal, e.g. `reg[ax, 64, 0..3] = 0b01;` (compound operators, `++` and `--` aren't allowed on a slice)";
+
+/// `reg[..., lo..hi] = 0b...;`: only `=` with a binary literal that fits in the slice.
+fn assign_slice(
+    reg: &RegRef,
+    slice: Slice,
+    ty: &CarlaType,
+    it: &mut ContextIterator<'_>,
+) -> Result<Node, String> {
+    match it.next() {
+        Some(Common(tk)) if tk.kind == Sign => {}
+        _ => return Err(EXPECTED_SLICE.into()),
+    }
+
+    let (value, digits) = match it.next() {
+        Some(Common(tk)) => match &tk.kind {
+            BinaryLiteral(v, digits) => (*v, *digits),
+            Integer(_) | Hexa(_) | Octal(_) => {
+                return Err(
+                    "a slice can only be set with a binary literal (`0b...`), e.g. `= 0b01`".into(),
+                )
+            }
+            _ => return Err(EXPECTED_SLICE.into()),
+        },
+        _ => return Err(EXPECTED_SLICE.into()),
+    };
+
+    if digits > slice.width {
+        return Err(format!(
+            "the binary literal has {digits} digits but the slice is only {} bit{} wide",
+            slice.width,
+            if slice.width == 1 { "" } else { "s" }
+        ));
+    }
+
+    Ok(Node::Assign(Assign {
+        target: Target::RegSlice(reg.clone(), slice),
+        ty: ty.clone(),
+        value: Compiled::from_expr(Expr::Integer(value, ty.clone())),
+    }))
+}
 
 pub fn parse(
     token: &Token,
@@ -94,7 +159,12 @@ pub fn parse(
 
     let place = expressions::parse_place(token, syms, it)?;
 
+    if let Expr::RegSlice(reg, sl, ty) = &place {
+        return assign_slice(reg, *sl, ty, it);
+    }
+
     let (target, ty) = match &place {
+        Expr::Reg(reg, ty) => (Target::Reg(reg.clone()), ty.clone()),
         Expr::Var(name, ty) => (Target::Var(name.clone()), ty.clone()),
         Expr::Deref(ptr, ty) => (
             Target::Deref(Compiled::from_expr((**ptr).clone())),

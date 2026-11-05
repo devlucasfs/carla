@@ -27,29 +27,3 @@ extend generic_ptr {
         return ptr.strlen(), ptr;
     }
 }
-
-extend int {
-    void print = fn(self) {
-        let c := 0 as byte;
-        let v := self.*;
-
-        if v < 0 {
-            c = 45;
-            syscall! 0x1(1, &c, 1);
-            v = 0 - v;
-        }
-
-        let d := 1;
-        while v / d >= 10 {
-            d = d * 10;
-        }
-
-        while d > 0 {
-            c = (v / d % 10 + 48) as byte;
-            syscall! 0x1(1, &c, 1);
-            d = d / 10;
-        }
-
-        syscall! 0x1(1, "\n", 1);
-    }
-}

@@ -1,8 +1,10 @@
-sudo cp std/entry.crl ~/.carla/libs
-sudo cp std/nashj.crl ~/.carla/libs
-sudo cp std/croutines.crl ~/.carla/libs
-sudo cp std/extensions.crl ~/.carla/libs
-sudo cp std/vector.crl ~/.carla/libs
-sudo cp std/errors.crl ~/.carla/libs
-sudo cp std/stream.crl ~/.carla/libs
-sudo cp std/mem.crl ~/.carla/libs
+sudo cp -rf std/entry.crl ~/.carla/libs
+sudo cp -rf std/nashj.crl ~/.carla/libs
+sudo cp -rf std/extensions.crl ~/.carla/libs
+sudo cp -rf std/vector.crl ~/.carla/libs
+sudo cp -rf std/errors.crl ~/.carla/libs
+sudo cp -rf std/stream.crl ~/.carla/libs
+sudo cp -rf std/mem.crl ~/.carla/libs
+sudo cp -rf std/stdlib.crl ~/.carla/libs
+sudo cp -rf std/std/croutines.crl ~/.carla/libs/std
+sudo cp -rf std/std/io.crl ~/.carla/libs/std

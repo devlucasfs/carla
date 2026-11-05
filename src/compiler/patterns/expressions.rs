@@ -6,11 +6,14 @@ use crate::{
         iterator::ContextIterator,
         nesting::Context::{self, Block, Common},
         node::Node::{self, Expression},
-        patterns::types::{self, Base, CarlaType},
+        patterns::{
+            reg::{self, RegRef, Slice},
+            types::{self, Base, CarlaType},
+        },
         scanner::{
             BinOP as Cmp,
-            BitOp::AND,
-            Keywords::{As, Fn as FnKw, Syscall},
+            BitOp::{AND, LSH, OR, RSH, XOR},
+            Keywords::{As, Fn as FnKw, Reg, RegOk, Syscall},
             MathOp::{self, Minus},
             PBB::{Bracket, Paren},
             Token,
@@ -35,15 +38,20 @@ const DEFAULT_SYSCALL_RET: &str = "int";
 const DEFAULT_FN_REF: &str = "fn_ref";
 const DEFAULT_VOID: &str = "void";
 
+const BARE_SLICE: &str = "a `reg[.., lo..hi]` slice isn't a value: set it with `= 0b...` or read it with `.*`";
+
 mod bp {
     pub const LOG_OR: (u8, u8) = (1, 2);
     pub const LOG_AND: (u8, u8) = (3, 4);
     pub const COMPARE: (u8, u8) = (5, 6);
-    pub const BIT_AND: (u8, u8) = (7, 8);
-    pub const ADDITIVE: (u8, u8) = (9, 10);
-    pub const MULTIPLICATIVE: (u8, u8) = (11, 12);
-    pub const CAST: u8 = 13;
-    pub const PREFIX: u8 = 15;
+    pub const BIT_OR: (u8, u8) = (7, 8);
+    pub const BIT_XOR: (u8, u8) = (9, 10);
+    pub const BIT_AND: (u8, u8) = (11, 12);
+    pub const SHIFT: (u8, u8) = (13, 14);
+    pub const ADDITIVE: (u8, u8) = (15, 16);
+    pub const MULTIPLICATIVE: (u8, u8) = (17, 18);
+    pub const CAST: u8 = 19;
+    pub const PREFIX: u8 = 21;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,6 +68,11 @@ pub enum BinOp {
     Div,
     Rem,
     BitAnd,
+    BitOr,
+    BitNot,
+    BitXor,
+    Shl,
+    Shr,
     Eq,
     Ne,
     Lt,
@@ -90,6 +103,11 @@ impl BinOp {
             Self::Div => "/",
             Self::Rem => "%",
             Self::BitAnd => "&",
+            Self::BitOr => "|",
+            Self::BitNot => "~",
+            Self::BitXor => "^",
+            Self::Shl => "<<",
+            Self::Shr => ">>",
             Self::Eq => "==",
             Self::Ne => "!=",
             Self::Lt => "<",
@@ -104,6 +122,10 @@ impl BinOp {
     fn from_token(kind: &TokenKind) -> Option<(Self, u8, u8)> {
         let (op, (left, right)) = match kind {
             BitOperator(AND) => (Self::BitAnd, bp::BIT_AND),
+            BitOperator(OR) => (Self::BitOr, bp::BIT_OR),
+            BitOperator(XOR) => (Self::BitXor, bp::BIT_XOR),
+            BitOperator(LSH) => (Self::Shl, bp::SHIFT),
+            BitOperator(RSH) => (Self::Shr, bp::SHIFT),
             MathOperator(MathOp::Plus) => (Self::Add, bp::ADDITIVE),
             MathOperator(MathOp::Minus) => (Self::Sub, bp::ADDITIVE),
             MathOperator(MathOp::Star) => (Self::Mul, bp::MULTIPLICATIVE),
@@ -130,16 +152,17 @@ pub enum Expr {
     Boolean(bool, CarlaType),
     Nil,
     Var(String, CarlaType),
-    /// `&id` (typed pointer / untyped pointer) or `::id` (type `fn_ref`).
     Pointer(String, CarlaType),
     Call(String, Vec<Expr>, CarlaType),
-    /// `fn callee(args)`: calls the address held by a `fn_ref` value.
     CallIndirect(Box<Expr>, Vec<Expr>, CarlaType),
     Syscall(u64, Vec<Expr>, CarlaType),
     Unary(UnOp, Box<Expr>, CarlaType),
     Binary(BinOp, Box<Expr>, Box<Expr>, CarlaType),
     Cast(Box<Expr>, CarlaType),
     Deref(Box<Expr>, CarlaType),
+    Reg(RegRef, CarlaType),
+    RegSlice(RegRef, Slice, CarlaType),
+    RegSliceGet(RegRef, Slice, CarlaType),
 }
 
 impl Expr {
@@ -157,7 +180,10 @@ impl Expr {
             | Expr::Unary(_, _, t)
             | Expr::Binary(_, _, _, t)
             | Expr::Cast(_, t)
-            | Expr::Deref(_, t) => t.clone(),
+            | Expr::Deref(_, t)
+            | Expr::Reg(_, t)
+            | Expr::RegSlice(_, _, t)
+            | Expr::RegSliceGet(_, _, t) => t.clone(),
         }
     }
 
@@ -221,6 +247,10 @@ pub enum StepOp {
     Syscall(u64, Vec<Operand>),
     Cast(Operand, CarlaType),
     Deref(Operand),
+    /// Read of a register / mapped io (the latter is volatile).
+    RegRead(RegRef),
+    /// Read of bits `lo..lo+width` of a register, shifted down, zero-extended.
+    RegSliceRead(RegRef, Slice),
     Logical(BinOp, Operand, Vec<Step>, Operand),
 }
 
@@ -324,6 +354,9 @@ fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
             let a = lower(x, out);
             emit(out, t, StepOp::Deref(a))
         }
+        Expr::Reg(r, t) => emit(out, t, StepOp::RegRead(r.clone())),
+        Expr::RegSliceGet(r, s, t) => emit(out, t, StepOp::RegSliceRead(r.clone(), *s)),
+        Expr::RegSlice(..) => unreachable!("a bare reg slice is rejected by the parser"),
         literal => Operand::Const(literal.clone()),
     }
 }
@@ -511,7 +544,7 @@ fn make_unary(op: UnOp, x: Expr) -> Result<Expr, String> {
             Some(Expr::Integer(v, ty.clone()))
         }
         (UnOp::Not, Expr::Boolean(b, _)) => Some(Expr::Boolean(!b, ty.clone())),
-        (UnOp::Not, Expr::Integer(i, _)) => Some(Expr::Integer((*i == 0) as i128, ty.clone())),
+        (UnOp::Not, Expr::Integer(i, _)) => Some(Expr::Integer(!(*i as i128), ty.clone())),
         _ => None,
     };
     Ok(folded.unwrap_or_else(|| Expr::Unary(op, Box::new(x), ty)))
@@ -578,6 +611,8 @@ fn fold_binary(op: BinOp, l: &Expr, r: &Expr, ty: &CarlaType) -> Result<Option<E
     if let (Expr::Boolean(a, _), Expr::Boolean(b, _)) = (l, r) {
         return Ok(match op {
             BitAnd => Some(Expr::Boolean(a & b, ty.clone())),
+            BitOr => Some(Expr::Boolean(a | b, ty.clone())),
+            BitXor => Some(Expr::Boolean(a ^ b, ty.clone())),
             Eq => Some(Expr::Boolean(a == b, ty.clone())),
             Ne => Some(Expr::Boolean(a != b, ty.clone())),
             _ => None,
@@ -609,6 +644,20 @@ fn fold_binary(op: BinOp, l: &Expr, r: &Expr, ty: &CarlaType) -> Result<Option<E
         Div => a.checked_div(*b),
         Rem => a.checked_rem(*b),
         BitAnd => Some(a & b),
+        BitOr => Some(a | b),
+        BitXor => Some(a ^ b),
+        Shl | Shr if !(0..=126).contains(b) => {
+            return Err(format!("the shift amount {b} is out of range (0 to 126)"))
+        }
+        Shl => {
+            let shifted = a.wrapping_shl(*b as u32);
+            if (shifted >> *b) == *a {
+                Some(shifted)
+            } else {
+                None
+            }
+        }
+        Shr => Some(a >> *b),
         _ => unreachable!("comparison and logical operators are handled above"),
     }
     .ok_or("compile-time overflow")?;
@@ -913,6 +962,8 @@ pub fn starts_with(kind: &TokenKind) -> bool {
         kind,
         Identifier(_)
             | Keyword(Syscall)
+            | Keyword(Reg)
+            | Keyword(RegOk)
             | Keyword(FnKw)
             | DoubleColon
             | Bool(_)
@@ -1003,6 +1054,9 @@ impl<'a, 'c> Parser<'a, 'c> {
 
     fn continue_expr(&mut self, head: Expr, min_bp: u8) -> Result<Expr, String> {
         let lhs = self.postfix(head)?;
+        if matches!(lhs, Expr::RegSlice(..)) {
+            return Err(BARE_SLICE.into());
+        }
         self.climb(lhs, min_bp)
     }
 
@@ -1064,7 +1118,15 @@ impl<'a, 'c> Parser<'a, 'c> {
 
                 if self.at(&MathOperator(MathOp::Star)) {
                     self.it.next();
-                    lhs = make_deref(lhs)?;
+                    lhs = match lhs {
+                        Expr::RegSlice(r, s, t) => Expr::RegSliceGet(r, s, t),
+                        Expr::Reg(..) => {
+                            return Err("`reg[..]` without a slice is already a value; `.*` only \
+                                        reads a slice (`reg[ax, 64, 0..3].*`)"
+                                .into())
+                        }
+                        other => make_deref(other)?,
+                    };
                     continue;
                 }
 
@@ -1093,6 +1155,8 @@ impl<'a, 'c> Parser<'a, 'c> {
     fn prefix(&mut self, token: &Token) -> Result<Expr, String> {
         match &token.kind {
             Keyword(Syscall) => self.syscall(),
+            Keyword(Reg) => self.reg(false),
+            Keyword(RegOk) => self.reg(true),
 
             DoubleColon => self.fn_address(),
             Keyword(FnKw) => self.fn_call(),
@@ -1292,6 +1356,54 @@ impl<'a, 'c> Parser<'a, 'c> {
             }
         }
         Ok(args)
+    }
+
+    /// `reg[...]` / `reg_ok[...]`, see the `reg` module.
+    ///
+    /// The arguments are read straight from the tokens (not as expressions): `ax` is a register
+    /// name, not a variable.
+    fn reg(&mut self, probe: bool) -> Result<Expr, String> {
+        let kw = if probe { "reg_ok" } else { "reg" };
+
+        let Some(Block(Bracket, ctx)) = self.it.next() else {
+            return Err(format!(
+                "Expected `[...]` after `{kw}`, e.g. `{kw}[ax, 64]`, `{kw}[0x24]` or `{kw}[ax, 64, 0..3]`"
+            ));
+        };
+
+        let mut sub = ContextIterator::new(ctx.as_slice(), 0);
+        let mut toks: Vec<&TokenKind> = vec![];
+        while let Some(c) = sub.next() {
+            match c {
+                Common(tk) => toks.push(&tk.kind),
+                _ => {
+                    return Err(format!(
+                        "`{kw}[...]` only takes register names, numbers, `,` and `..`"
+                    ))
+                }
+            }
+        }
+
+        // a syntax error is an error even in `reg_ok`; only the values can make it `false`
+        let raw = reg::parse_args(&toks).map_err(|e| format!("`{kw}[...]`: {e}"))?;
+        let checked = reg::validate(&raw);
+
+        if probe {
+            let bool_ty = builtin(self.syms, DEFAULT_BOOL)?;
+            return Ok(Expr::Boolean(checked.is_ok(), bool_ty));
+        }
+
+        let (r, slice) = checked.map_err(|e| format!("`reg[...]`: {e}"))?;
+        match slice {
+            None => {
+                let ty = reg::int_type(self.syms, r.bits, true)?;
+                Ok(Expr::Reg(r, ty))
+            }
+            Some(s) => {
+                let ty = reg::int_type(self.syms, r.bits, false)?;
+                Ok(Expr::RegSlice(r, s, ty))
+            }
+        }
     }
 
     fn syscall(&mut self) -> Result<Expr, String> {

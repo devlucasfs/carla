@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use crate::compiler::patterns::reg::{RegRef, Slice};
 use crate::compiler::{
     codegen::Codegen,
     patterns::{expressions::ExprId, types::CarlaType},
@@ -45,6 +45,9 @@ pub enum MorganaContext {
 
 #[derive(Debug)]
 pub struct MorganaExpr<'a> {
+    pub registers: HashMap<String, (RegRef, Option<Slice>)>,
+    pub register_steps: HashMap<ExprId, (RegRef, Option<Slice>, usize)>,
+    pub result_register: Option<(RegRef, Option<Slice>, usize)>,
     pub syms: &'a mut Symbols,
     pub ctx: MorganaContext,
     pub vals: HashMap<ExprId, (String, CarlaType)>,
@@ -64,6 +67,9 @@ impl<'a> MorganaExpr<'a> {
             vals: HashMap::new(),
             out: String::new(),
             tmp: 0,
+            registers: HashMap::new(),
+            register_steps: HashMap::new(),
+            result_register: None,
         }
     }
 }

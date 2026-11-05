@@ -1,3 +1,6 @@
+
+use std::collections::HashMap;
+
 use crate::{
     compiler::{
         node::Node::{
@@ -13,6 +16,7 @@ use crate::{
             for_loop::ForLoop,
             incdec::IncDec,
             lambda::LambdaRunner,
+            reg::{RegRef, Slice},
             types::CarlaType,
             unfold::Unfold,
             while_loop::WhileLoop,
@@ -38,6 +42,9 @@ pub struct Codegen {
     pub loops: Vec<(String, String)>,
     pub value_to: Option<String>,
     pub ret: Option<CarlaType>,
+
+    // Variáveis que representam localizações de registradores ou endereços de I/O.
+    pub registers: HashMap<String, (RegRef, Option<Slice>)>,
 }
 
 fn fresh_name(prefix: &str) -> String {
@@ -52,6 +59,11 @@ fn binop_name(op: BinOp) -> &'static str {
         BinOp::Div => "div",
         BinOp::Rem => "rem",
         BinOp::BitAnd => "and",
+        BinOp::BitOr => "or",
+        BinOp::BitNot => "not",
+        BinOp::BitXor => "xor",
+        BinOp::Shl => "shl",
+        BinOp::Shr => "shr",
         BinOp::Eq => "eq",
         BinOp::Ne => "ne",
         BinOp::Lt => "lt",
@@ -131,18 +143,20 @@ impl<'a> MorganaExpr<'a> {
         let (val, ty) = match &s.op {
             StepOp::Call(name, args) => {
                 let mut parts = vec![];
+
                 for a in args {
                     let (v, _) = self.value(a)?;
                     parts.push(v);
                 }
 
-                let ty = match self.syms.lookup(&name).unwrap() {
+                let ty = match self.syms.lookup(name).unwrap() {
                     Variable(Some(ty), _, _) => ty.as_ref().clone(),
                     ExternFunction(ty, _) | UnfoldFunction(ty, _) => ty.as_ref().clone(),
                     _ => todo!(),
                 };
 
                 let t = self.fresh();
+
                 if ty.to_morgana() == MorganaType::Void {
                     self.line(format!("call {name}({})", parts.join(", ")));
                 } else {
@@ -156,17 +170,20 @@ impl<'a> MorganaExpr<'a> {
                 let (target, _) = self.value(callee)?;
 
                 let mut parts = vec![];
+
                 for a in args {
                     let (v, _) = self.value(a)?;
                     parts.push(v);
                 }
 
                 let t = self.fresh();
+
                 if s.ty.to_morgana() == MorganaType::Void {
                     self.line(format!("call_indirect {target}({})", parts.join(", ")));
                 } else {
                     self.line(format!(
-                        "{t} = call_indirect {target}({})",
+                        "{t} = call_indirect {} {target}({})",
+                        s.ty.to_morgana().to_string(),
                         parts.join(", ")
                     ));
                 }
@@ -188,6 +205,7 @@ impl<'a> MorganaExpr<'a> {
 
             StepOp::Syscall(number, args) => {
                 let mut parts = vec![number.to_string()];
+
                 for a in args {
                     let (v, _) = self.value(a)?;
                     parts.push(v);
@@ -206,7 +224,10 @@ impl<'a> MorganaExpr<'a> {
                     (v, s.ty.clone())
                 } else {
                     let t = self.fresh();
-                    self.line(format!("{t} = cast {} {v}", s.ty.to_morgana().to_string()));
+                    self.line(format!(
+                        "{t} = cast {} {v}",
+                        s.ty.to_morgana().to_string()
+                    ));
                     (t, s.ty.clone())
                 }
             }
@@ -214,7 +235,35 @@ impl<'a> MorganaExpr<'a> {
             StepOp::Deref(op) => {
                 let (p, _) = self.value(op)?;
                 let t = self.fresh();
-                self.line(format!("{t} = deref {} {p}", s.ty.to_morgana().to_string()));
+
+                self.line(format!(
+                    "{t} = deref {} {p}",
+                    s.ty.to_morgana().to_string()
+                ));
+
+                (t, s.ty.clone())
+            }
+
+            StepOp::RegRead(r) => {
+                let start = self.out.len();
+                let t = self.fresh();
+
+                self.line(r.ir_load(&t));
+
+                self.register_steps
+                    .insert(s.id, (r.clone(), None, start));
+
+                (t, s.ty.clone())
+            }
+
+            StepOp::RegSliceRead(r, slice) => {
+                let start = self.out.len();
+                let t = self.fresh();
+
+                self.line(r.ir_get(&t, slice));
+
+                self.register_steps
+                    .insert(s.id, (r.clone(), Some(*slice), start));
 
                 (t, s.ty.clone())
             }
@@ -224,6 +273,7 @@ impl<'a> MorganaExpr<'a> {
                 let (y, _) = self.value(b)?;
 
                 let t = self.fresh();
+
                 self.line(morgana::ir_binary(
                     &t,
                     binop_name(*op),
@@ -244,6 +294,7 @@ impl<'a> MorganaExpr<'a> {
 
                 self.line(morgana::ir_alloc(&res, &s.ty.to_morgana()));
                 self.line(morgana::ir_store(&res, &l));
+
                 self.line(if *op == BinOp::LogAnd {
                     morgana::ir_jz(&cond, &skip)
                 } else {
@@ -265,6 +316,7 @@ impl<'a> MorganaExpr<'a> {
         };
 
         self.vals.insert(s.id, (val, ty));
+
         Ok(())
     }
 
@@ -272,32 +324,56 @@ impl<'a> MorganaExpr<'a> {
         match op {
             Operand::Const(e) => Ok(match e {
                 Expr::Integer(i, ty) => (i.to_string(), ty.clone()),
-                // Expr::Float(f, ty) => (format!("0x{:016X}", f.to_bits()), ty),
-                Expr::Boolean(b, ty) => ((if *b { "255" } else { "0" }).into(), ty.clone()),
-                Expr::Nil => ("0".into(), CarlaType::from_basic("generic_ptr")),
+
+                Expr::Boolean(b, ty) => (
+                    (if *b { "255" } else { "0" }).into(),
+                    ty.clone(),
+                ),
+
+                Expr::Nil => (
+                    "0".into(),
+                    CarlaType::from_basic("generic_ptr"),
+                ),
+
                 Expr::String(s, ty) => {
                     let t = self.fresh();
                     self.line(format!("{t} = str {}", encode_literal(s)));
                     (t, ty.clone())
                 }
-                _ => return Err("constante não suportada no emissor (ex.: string)".into()),
+
+                _ => {
+                    return Err(
+                        "constante não suportada no emissor (ex.: string)".into()
+                    );
+                }
             }),
 
             Operand::Temp(id) => self
                 .vals
                 .get(id)
                 .cloned()
-                .ok_or_else(|| "temporário usado antes de ser definido".to_string()),
+                .ok_or_else(|| {
+                    "temporário usado antes de ser definido".to_string()
+                }),
 
             Operand::Var(name) => {
-                let ty = match self.syms.lookup(&name).unwrap() {
+                let ty = match self.syms.lookup(name).unwrap() {
                     Variable(Some(ty), _, _) => ty.as_ref().clone(),
                     _ => todo!(),
                 };
 
                 let t = self.fresh();
-                self.line(format!("{t} = load {name}"));
-                Ok((t, ty.clone()))
+
+                if let Some((reg, slice)) = self.registers.get(name).cloned() {
+                    match slice {
+                        Some(slice) => self.line(reg.ir_get(&t, &slice)),
+                        None => self.line(reg.ir_load(&t)),
+                    }
+                } else {
+                    self.line(format!("{t} = load {name}"));
+                }
+
+                Ok((t, ty))
             }
         }
     }
@@ -306,14 +382,24 @@ impl<'a> MorganaExpr<'a> {
 impl<'a> MorganaGenerator<Compiled> for MorganaExpr<'a> {
     fn to_morgana(&mut self, data: &Compiled) -> (String, CarlaType) {
         match data {
-            Compiled::Const(expr) => self.value(&Operand::Const(expr.clone())).unwrap(),
+            Compiled::Const(expr) => {
+                self.value(&Operand::Const(expr.clone())).unwrap()
+            }
 
             Compiled::Lazy(iterator) => {
                 let mut it = iterator.clone();
                 let result = it.result().clone();
 
+                self.result_register = None;
+
                 for step in &mut it {
                     _ = self.step(&step);
+                }
+
+                if let Operand::Temp(id) = &result {
+                    if let Some(location) = self.register_steps.get(id).cloned() {
+                        self.result_register = Some(location);
+                    }
                 }
 
                 self.value(&result).unwrap()
@@ -339,23 +425,33 @@ impl Codegen {
 
         let mut defers = vec![];
 
-        let make_defers = |r: &mut Codegen, sym: &mut Symbols, defers: &mut Vec<Compiled>| {
-            let mut d = defers.clone();
-            while let Some(defer) = d.pop() {
-                let mut s = sym.clone();
-                let mut morg = MorganaExpr::new(MorganaContext::Declaration, &mut s);
-                _ = morg.to_morgana(&defer);
-                morgana::write(r, &morg.out);
-            }
-        };
+        let make_defers =
+            |r: &mut Codegen, sym: &mut Symbols, defers: &mut Vec<Compiled>| {
+                let mut d = defers.clone();
 
-        while self.nodes.len() > 0 {
-            match (self.nodes.remove(0), (self.nodes.clone()).first()) {
+                while let Some(defer) = d.pop() {
+                    let mut s = sym.clone();
+                    let mut morg =
+                        MorganaExpr::new(MorganaContext::Declaration, &mut s);
+
+                    morg.registers = r.registers.clone();
+
+                    _ = morg.to_morgana(&defer);
+                    morgana::write(r, &morg.out);
+                }
+            };
+
+        while !self.nodes.is_empty() {
+            match (self.nodes.remove(0), self.nodes.clone().first()) {
                 (Nop, _) => {}
+
                 (STMTDefer(expr), _) => defers.push(expr),
+
                 (Declaration(decl), Some(Function(func))) => {
                     if decl._type.is_none() {
-                        CompilerOutputs::fatal("You can't define a function without a return type");
+                        CompilerOutputs::fatal(
+                            "You can't define a function without a return type",
+                        );
                     }
 
                     self.nodes.remove(0);
@@ -367,6 +463,7 @@ impl Codegen {
                             );
                             unreachable!();
                         };
+
                         Some(owner.pointer_to())
                     } else {
                         None
@@ -381,15 +478,23 @@ impl Codegen {
                     for arg in &func.args {
                         for id in &arg.ids {
                             if params.iter().any(|(name, _)| name == id) {
-                                CompilerOutputs::fatal(format!("Duplicated parameter '{id}'"));
+                                CompilerOutputs::fatal(
+                                    format!("Duplicated parameter '{id}'"),
+                                );
                             }
-                            params.push((id.clone(), arg.ty.as_ref().clone()));
+
+                            params.push((
+                                id.clone(),
+                                arg.ty.as_ref().clone(),
+                            ));
                         }
                     }
 
                     let args: Vec<_> = params
                         .iter()
-                        .map(|(name, ty)| (name.clone(), ty.to_morgana()))
+                        .map(|(name, ty)| {
+                            (name.clone(), ty.to_morgana())
+                        })
                         .collect();
 
                     let ret_ty = decl._type.clone().unwrap().as_ref().clone();
@@ -397,12 +502,17 @@ impl Codegen {
                     sym.push_scope();
 
                     for (name, ty) in &params {
-                        sym.push(name, Variable(Some(Box::new(ty.clone())), true, false));
+                        sym.push(
+                            name,
+                            Variable(Some(Box::new(ty.clone())), true, false),
+                        );
                     }
 
                     let runner = match &func.run {
                         LambdaRunner::Scope(ctx) => visitor::work(&ctx, sym),
-                        LambdaRunner::Expr(expr) => vec![Expression(expr.clone(), true)],
+                        LambdaRunner::Expr(expr) => {
+                            vec![Expression(expr.clone(), true)]
+                        }
                         _ => todo!(),
                     };
 
@@ -412,41 +522,93 @@ impl Codegen {
                     if matches!(&func.run, LambdaRunner::Scope(_)) {
                         sym.pop_scope();
                     }
+
                     sym.pop_scope();
 
                     let ctype = decl._type.unwrap();
-                    morgana::function(self, ctype.to_morgana(), decl.identifier, args, body);
+
+                    morgana::function(
+                        self,
+                        ctype.to_morgana(),
+                        decl.identifier,
+                        args,
+                        body,
+                    );
                 }
 
                 (Declaration(decl), Some(Expression(expr, _))) => {
                     let mut s = sym.clone();
-                    let mut morg = MorganaExpr::new(MorganaContext::Declaration, &mut s);
+                    let mut morg =
+                        MorganaExpr::new(MorganaContext::Declaration, &mut s);
+
+                    morg.registers = self.registers.clone();
+
                     let (result, ty) = morg.to_morgana(&expr.clone());
                     self.nodes.remove(0);
 
                     let irty = ty.to_morgana();
 
-                    if let Some(tty) = decl._type {
-                        let (x, y) = (tty.as_ref().to_string(), ty.to_string());
+                    if let Some(tty) = &decl._type {
+                        let (x, y) = (
+                            tty.as_ref().to_string(),
+                            ty.to_string(),
+                        );
+
                         if x != y {
                             CompilerOutputs::fatal(format!(
                                 "You defined {} as a {x} but was found {y}",
                                 decl.identifier
                             ));
                         }
-                        ensure_symbol(sym, &decl.identifier, &tty);
+
+                        ensure_symbol(sym, &decl.identifier, tty);
                     } else {
                         sym.erase(&decl.identifier);
-                        sym.push(&decl.identifier, Variable(Some(Box::from(ty)), true, false));
+                        sym.push(
+                            &decl.identifier,
+                            Variable(Some(Box::new(ty.clone())), true, false),
+                        );
                     }
 
+                    let is_register = if let Some((reg, slice, start)) =
+                        morg.result_register.take()
+                    {
+                        if let Some(relative_end) =
+                            morg.out[start..].find('\n')
+                        {
+                            let end = start + relative_end + 1;
+                            morg.out.replace_range(start..end, "");
+                        }
+
+                        self.registers.insert(
+                            decl.identifier.clone(),
+                            (reg, slice),
+                        );
+
+                        true
+                    } else {
+                        self.registers.remove(&decl.identifier);
+                        false
+                    };
+
                     morgana::write(self, &morg.out);
-                    self.emit(ir_declare(&decl.identifier, &irty, &result));
+
+                    if !is_register {
+                        self.emit(ir_declare(
+                            &decl.identifier,
+                            &irty,
+                            &result,
+                        ));
+                    }
                 }
 
                 (Expression(expr, is_eof), _) => {
                     let mut s = sym.clone();
-                    let mut morg = MorganaExpr::new(MorganaContext::Declaration, &mut s);
+                    let mut morg =
+                        MorganaExpr::new(MorganaContext::Declaration, &mut s);
+
+                    morg.registers = self.registers.clone();
+
                     let (result, ty) = morg.to_morgana(&expr.clone());
 
                     morgana::write(self, &morg.out);
@@ -487,7 +649,11 @@ impl Codegen {
                     };
 
                     if let Some(tty) = &decl._type {
-                        let (x, y) = (tty.as_ref().to_string(), ty.to_string());
+                        let (x, y) = (
+                            tty.as_ref().to_string(),
+                            ty.to_string(),
+                        );
+
                         if x != y {
                             CompilerOutputs::fatal(format!(
                                 "You defined {} as a {x} but was found {y}",
@@ -497,13 +663,22 @@ impl Codegen {
                     }
 
                     self.alloc_dest(&decl.identifier, &ty);
-                    self.conditional(sym, &c, Some(decl.identifier.clone()));
+                    self.conditional(
+                        sym,
+                        &c,
+                        Some(decl.identifier.clone()),
+                    );
 
                     match &decl._type {
-                        Some(tty) => ensure_symbol(sym, &decl.identifier, tty),
+                        Some(tty) => {
+                            ensure_symbol(sym, &decl.identifier, tty)
+                        }
                         None => {
                             sym.erase(&decl.identifier);
-                            sym.push(&decl.identifier, Variable(Some(Box::from(ty)), true, false));
+                            sym.push(
+                                &decl.identifier,
+                                Variable(Some(Box::new(ty)), true, false),
+                            );
                         }
                     }
                 }
@@ -511,7 +686,10 @@ impl Codegen {
                 (Declaration(decl), _) => {
                     if let Some(tty) = &decl._type {
                         ensure_symbol(sym, &decl.identifier, tty);
-                        self.emit(morgana::ir_alloc(&decl.identifier, &tty.to_morgana()));
+                        self.emit(morgana::ir_alloc(
+                            &decl.identifier,
+                            &tty.to_morgana(),
+                        ));
                     }
                 }
 
@@ -533,12 +711,16 @@ impl Codegen {
                         let result = fresh_name("t");
                         self.alloc_dest(&result, &ty);
                         self.conditional(sym, &c, Some(result.clone()));
+
                         make_defers(self, sym, &mut defers);
 
                         if ret_t.to_morgana() != Void {
                             morgana::ret(self, &result);
                         }
-                    } else if c.ty.is_some() && is_last && self.value_to.is_some() {
+                    } else if c.ty.is_some()
+                        && is_last
+                        && self.value_to.is_some()
+                    {
                         let dest = self.value_to.clone();
                         self.conditional(sym, &c, dest);
                     } else {
@@ -547,13 +729,20 @@ impl Codegen {
                 }
 
                 (Node::While(w), _) => self.while_loop(sym, &w),
+
                 (Node::For(f), _) => self.for_loop(sym, &f),
+
                 (Node::IncDec(step), _) => self.incdec(&step),
+
                 (Node::Assign(a), _) => self.assign(sym, &a),
 
                 (STMTReturn(expr), _) => {
                     let mut s = sym.clone();
-                    let mut morg = MorganaExpr::new(MorganaContext::Declaration, &mut s);
+                    let mut morg =
+                        MorganaExpr::new(MorganaContext::Declaration, &mut s);
+
+                    morg.registers = self.registers.clone();
+
                     let (result, ty) = morg.to_morgana(&expr.clone());
 
                     morgana::write(self, &morg.out);
@@ -576,11 +765,14 @@ impl Codegen {
 
                 (STMTReturnTuple(exprs), _) => {
                     let Some(ret_t) = ret.clone() else {
-                        CompilerOutputs::fatal("`return` outside of a function");
+                        CompilerOutputs::fatal(
+                            "`return` outside of a function",
+                        );
                         unreachable!();
                     };
 
                     let irty = ret_t.to_morgana();
+
                     let MorganaType::Tuple(expected) = &irty else {
                         CompilerOutputs::fatal(format!(
                             "You can't return a tuple, because the expected type is {}",
@@ -599,7 +791,10 @@ impl Codegen {
                     }
 
                     let mut names = Vec::with_capacity(exprs.len());
-                    for (i, (expr, want)) in exprs.iter().zip(expected).enumerate() {
+
+                    for (i, (expr, want)) in
+                        exprs.iter().zip(expected).enumerate()
+                    {
                         let (value, ty) = self.eval(sym, expr);
 
                         if ty.to_morgana() != *want {
@@ -614,7 +809,12 @@ impl Codegen {
                     }
 
                     let result = fresh_name("t");
-                    self.emit(morgana::ir_pack(&result, &irty, &names));
+
+                    self.emit(morgana::ir_pack(
+                        &result,
+                        &irty,
+                        &names,
+                    ));
 
                     make_defers(self, sym, &mut defers);
                     morgana::ret(self, &result);
@@ -625,6 +825,7 @@ impl Codegen {
                         CompilerOutputs::fatal("`break` outside of a loop");
                         unreachable!();
                     };
+
                     self.emit(morgana::ir_jmp(&end));
                 }
 
@@ -633,43 +834,56 @@ impl Codegen {
                         CompilerOutputs::fatal("`continue` outside of a loop");
                         unreachable!();
                     };
+
                     self.emit(morgana::ir_jmp(&cont));
                 }
 
                 (Declare(decl), _) => match decl {
                     Extern::Variable(_, _) => todo!(),
+
                     Extern::Func(ret, params, identifier) => {
                         let mut args = vec![];
-                        let mut carla_args = vec![];
+
                         for arg in &params {
                             for _ in 0..arg.ids.len() {
-                                carla_args.push(arg.ty.clone());
                                 args.push(arg.ty.to_morgana());
                             }
                         }
-                        morgana::_extern(self, ret.to_morgana(), identifier.clone(), args);
+
+                        morgana::_extern(
+                            self,
+                            ret.to_morgana(),
+                            identifier.clone(),
+                            args,
+                        );
                     }
                 },
 
                 (Unfoldable(decl), _) => match decl {
                     Unfold::Func(ret, params, identifier) => {
                         let mut args = vec![];
-                        let mut carla_args = vec![];
+
                         for arg in &params {
                             for _ in 0..arg.ids.len() {
-                                carla_args.push(arg.ty.clone());
                                 args.push(arg.ty.to_morgana());
                             }
                         }
-                        morgana::unfold(self, ret.to_morgana(), identifier.clone(), args);
+
+                        morgana::unfold(
+                            self,
+                            ret.to_morgana(),
+                            identifier.clone(),
+                            args,
+                        );
                     }
                 },
 
                 (Extension(ty, block), _) => {
                     let mut cgen = Codegen::new(block);
                     cgen.extending = Some(ty.clone());
-                    let str = cgen.generate(sym, None);
-                    morgana::write(self, &str);
+
+                    let code = cgen.generate(sym, None);
+                    morgana::write(self, &code);
                 }
 
                 _ => {}
@@ -712,9 +926,15 @@ impl Codegen {
 
     fn eval(&mut self, sym: &Symbols, expr: &Compiled) -> (String, CarlaType) {
         let mut s = sym.clone();
-        let mut morg = MorganaExpr::new(MorganaContext::Declaration, &mut s);
+        let mut morg =
+            MorganaExpr::new(MorganaContext::Declaration, &mut s);
+
+        morg.registers = self.registers.clone();
+
         let (value, ty) = morg.to_morgana(expr);
+
         morgana::write(self, &morg.out);
+
         (value, ty)
     }
 
@@ -736,6 +956,7 @@ impl Codegen {
         cg.loops = self.loops.clone();
         cg.value_to = value_to;
         cg.ret = self.ret.clone();
+        cg.registers = self.registers.clone();
 
         if scoped {
             sym.push_scope();
@@ -750,13 +971,20 @@ impl Codegen {
         code
     }
 
-    fn loop_body(&self, sym: &mut Symbols, nodes: &[Node], cont: String, brk: String) -> String {
+    fn loop_body(
+        &self,
+        sym: &mut Symbols,
+        nodes: &[Node],
+        cont: String,
+        brk: String,
+    ) -> String {
         let mut cg = Codegen::new(nodes.to_vec());
 
         cg.extending = self.extending.clone();
         cg.loops = self.loops.clone();
         cg.loops.push((cont, brk));
         cg.ret = self.ret.clone();
+        cg.registers = self.registers.clone();
 
         sym.push_scope();
 
@@ -780,23 +1008,41 @@ impl Codegen {
 
         if b.names.len() == 1 {
             if let Some(name) = &b.names[0] {
-                self.emit(ir_declare(name, &b.types[0].to_morgana(), &value));
+                self.emit(ir_declare(
+                    name,
+                    &b.types[0].to_morgana(),
+                    &value,
+                ));
             }
+
             return;
         }
 
-        let types: Vec<MorganaType> = b.types.iter().map(|t| t.to_morgana()).collect();
-        for line in morgana::ir_destructure(&value, &b.names, &types, &b.offsets) {
+        let types: Vec<MorganaType> =
+            b.types.iter().map(|t| t.to_morgana()).collect();
+
+        for line in morgana::ir_destructure(
+            &value,
+            &b.names,
+            &types,
+            &b.offsets,
+        ) {
             self.emit(line);
         }
     }
 
-    fn conditional(&mut self, sym: &mut Symbols, c: &Conditional, dest: Option<String>) {
+    fn conditional(
+        &mut self,
+        sym: &mut Symbols,
+        c: &Conditional,
+        dest: Option<String>,
+    ) {
         if let Some(b) = c.init.as_ref().filter(|b| !b.scoped) {
             Self::declare_binding(sym, b);
         }
 
         sym.push_scope();
+
         if let Some(b) = c.init.as_ref().filter(|b| b.scoped) {
             Self::declare_binding(sym, b);
         }
@@ -812,10 +1058,12 @@ impl Codegen {
                 } else {
                     c.otherwise.as_ref()
                 };
+
                 if let Some(nodes) = branch {
                     let code = self.sub(sym, nodes, true, dest);
                     self.append(code);
                 }
+
                 sym.pop_scope();
                 return;
             }
@@ -827,16 +1075,23 @@ impl Codegen {
         match &c.otherwise {
             None => {
                 self.emit(morgana::ir_jz(&cond, &end));
+
                 let code = self.sub(sym, &c.then, true, dest);
                 self.append(code);
             }
+
             Some(other) => {
                 let otherwise = fresh_name("L");
+
                 self.emit(morgana::ir_jz(&cond, &otherwise));
-                let code = self.sub(sym, &c.then, true, dest.clone());
+
+                let code =
+                    self.sub(sym, &c.then, true, dest.clone());
+
                 self.append(code);
                 self.emit(morgana::ir_jmp(&end));
                 self.emit(morgana::ir_label(&otherwise));
+
                 let code = self.sub(sym, other, true, dest);
                 self.append(code);
             }
@@ -852,27 +1107,39 @@ impl Codegen {
         }
 
         sym.push_scope();
+
         if let Some(b) = w.init.as_ref().filter(|b| b.scoped) {
             Self::declare_binding(sym, b);
         }
 
         let (top, end) = (fresh_name("L"), fresh_name("L"));
+
         self.emit(morgana::ir_label(&top));
 
         if let Some(b) = &w.init {
             self.bind(sym, b);
         }
 
-        if !matches!(&w.cond, Compiled::Const(Expr::Boolean(true, _))) {
+        if !matches!(
+            &w.cond,
+            Compiled::Const(Expr::Boolean(true, _))
+        ) {
             let cond = self.eval_cond(sym, &w.cond);
             self.emit(morgana::ir_jz(&cond, &end));
         }
 
-        let code = self.loop_body(sym, &w.body, top.clone(), end.clone());
+        let code = self.loop_body(
+            sym,
+            &w.body,
+            top.clone(),
+            end.clone(),
+        );
+
         self.append(code);
 
         self.emit(morgana::ir_jmp(&top));
         self.emit(morgana::ir_label(&end));
+
         sym.pop_scope();
     }
 
@@ -897,26 +1164,42 @@ impl Codegen {
                     if b.scoped {
                         Self::declare_binding(sym, b);
                     }
+
                     self.bind(sym, b);
                 }
 
                 let code = self.sub(sym, init, false, None);
                 self.append(code);
 
-                let (top, cont, end) = (fresh_name("L"), fresh_name("L"), fresh_name("L"));
+                let (top, cont, end) = (
+                    fresh_name("L"),
+                    fresh_name("L"),
+                    fresh_name("L"),
+                );
+
                 self.emit(morgana::ir_label(&top));
 
                 if let Some(cond) = cond {
-                    if !matches!(cond, Compiled::Const(Expr::Boolean(true, _))) {
+                    if !matches!(
+                        cond,
+                        Compiled::Const(Expr::Boolean(true, _))
+                    ) {
                         let v = self.eval_cond(sym, cond);
                         self.emit(morgana::ir_jz(&v, &end));
                     }
                 }
 
-                let code = self.loop_body(sym, body, cont.clone(), end.clone());
+                let code = self.loop_body(
+                    sym,
+                    body,
+                    cont.clone(),
+                    end.clone(),
+                );
+
                 self.append(code);
 
                 self.emit(morgana::ir_label(&cont));
+
                 if let Some(step) = step {
                     match step.as_ref() {
                         Node::IncDec(s) => self.incdec(s),
@@ -956,15 +1239,25 @@ impl Codegen {
                         ensure_symbol(sym, name, ty);
                         name.clone()
                     }
+
                     None => fresh_name("i"),
                 };
+
                 self.emit(ir_declare(&counter, &irty, &first));
 
-                let (top, cont, done) = (fresh_name("L"), fresh_name("L"), fresh_name("L"));
+                let (top, cont, done) = (
+                    fresh_name("L"),
+                    fresh_name("L"),
+                    fresh_name("L"),
+                );
+
                 self.emit(morgana::ir_label(&top));
 
-                let (cur, flag) = (fresh_name("t"), fresh_name("t"));
+                let (cur, flag) =
+                    (fresh_name("t"), fresh_name("t"));
+
                 self.emit(format!("{cur} = load {counter}"));
+
                 self.emit(morgana::ir_binary(
                     &flag,
                     if *inclusive { "le" } else { "lt" },
@@ -972,25 +1265,48 @@ impl Codegen {
                     &cur,
                     &last,
                 ));
+
                 self.emit(morgana::ir_jz(&flag, &done));
 
-                let code = self.loop_body(sym, body, cont.clone(), done.clone());
+                let code = self.loop_body(
+                    sym,
+                    body,
+                    cont.clone(),
+                    done.clone(),
+                );
+
                 self.append(code);
 
                 self.emit(morgana::ir_label(&cont));
+
                 let cur = fresh_name("t");
                 self.emit(format!("{cur} = load {counter}"));
 
                 if *inclusive {
                     let reached = fresh_name("t");
-                    self.emit(morgana::ir_binary(&reached, "eq", signed, &cur, &last));
+
+                    self.emit(morgana::ir_binary(
+                        &reached,
+                        "eq",
+                        signed,
+                        &cur,
+                        &last,
+                    ));
+
                     self.emit(morgana::ir_jnz(&reached, &done));
                 }
 
                 let next = fresh_name("t");
-                self.emit(morgana::ir_binary(&next, "add", signed, &cur, "1"));
-                self.emit(morgana::ir_store(&counter, &next));
 
+                self.emit(morgana::ir_binary(
+                    &next,
+                    "add",
+                    signed,
+                    &cur,
+                    "1",
+                ));
+
+                self.emit(morgana::ir_store(&counter, &next));
                 self.emit(morgana::ir_jmp(&top));
                 self.emit(morgana::ir_label(&done));
             }
@@ -1003,12 +1319,43 @@ impl Codegen {
         match &a.target {
             Target::Var(name) => {
                 let (value, _) = self.eval(sym, &a.value);
-                self.emit(morgana::ir_store(name, &value));
+
+                if let Some((reg, slice)) =
+                    self.registers.get(name).cloned()
+                {
+                    match slice {
+                        Some(slice) => {
+                            self.emit(reg.ir_set(&slice, &value));
+                        }
+
+                        None => {
+                            self.emit(reg.ir_store(&value));
+                        }
+                    }
+                } else {
+                    self.emit(morgana::ir_store(name, &value));
+                }
             }
+
             Target::Deref(ptr) => {
                 let (addr, _) = self.eval(sym, ptr);
                 let (value, _) = self.eval(sym, &a.value);
-                self.emit(morgana::ir_store_deref(&a.ty.to_morgana(), &addr, &value));
+
+                self.emit(morgana::ir_store_deref(
+                    &a.ty.to_morgana(),
+                    &addr,
+                    &value,
+                ));
+            }
+
+            Target::Reg(r) => {
+                let (value, _) = self.eval(sym, &a.value);
+                self.emit(r.ir_store(&value));
+            }
+
+            Target::RegSlice(r, slice) => {
+                let (value, _) = self.eval(sym, &a.value);
+                self.emit(r.ir_set(slice, &value));
             }
         }
     }
@@ -1017,7 +1364,22 @@ impl Codegen {
         let signed = is_signed(&s.ty.to_morgana());
         let (cur, next) = (fresh_name("t"), fresh_name("t"));
 
-        self.emit(format!("{cur} = load {}", s.name));
+        let location = self.registers.get(&s.name).cloned();
+
+        match &location {
+            Some((reg, Some(slice))) => {
+                self.emit(reg.ir_get(&cur, slice));
+            }
+
+            Some((reg, None)) => {
+                self.emit(reg.ir_load(&cur));
+            }
+
+            None => {
+                self.emit(format!("{cur} = load {}", s.name));
+            }
+        }
+
         self.emit(morgana::ir_binary(
             &next,
             if s.increment { "add" } else { "sub" },
@@ -1025,6 +1387,19 @@ impl Codegen {
             &cur,
             "1",
         ));
-        self.emit(morgana::ir_store(&s.name, &next));
+
+        match location {
+            Some((reg, Some(slice))) => {
+                self.emit(reg.ir_set(&slice, &next));
+            }
+
+            Some((reg, None)) => {
+                self.emit(reg.ir_store(&next));
+            }
+
+            None => {
+                self.emit(morgana::ir_store(&s.name, &next));
+            }
+        }
     }
 }

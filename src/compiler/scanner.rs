@@ -4,9 +4,9 @@ use crate::{
             Different, Equals, Greater, GreaterEqual, IterConcat, IterConcatEq, Less, LessEqual,
         }, BitOp::{AND, LSH, NOT, OR, RSH, XOR}, Keywords::{
             As, Break, Const, Constexpr, Continue, Defer, Else, Extend, Extern, Fn, For, If, Let,
-            Mut, Puts, Return, Syscall, Unfold, Using, Var, While,
+            Mut, Puts, Reg, RegOk, Return, Syscall, Unfold, Using, Var, While,
         }, MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star}, PBB::{Brace, Bracket, Paren}, TokenKind::{
-            And, Arrow, Bang, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, CompoundAssign, Dec, Dot, DoubleColon, Float, Hexa, Identifier, Inc, Integer, Keyword, MathOperator, Nil, Octal, Open, Or, RunaString, Semi, Sign, Walrus, Wild,
+            And, Arrow, Bang, BinaryLiteral, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, CompoundAssign, Dec, Dot, DoubleColon, Float, Hexa, Identifier, Inc, Integer, Keyword, MathOperator, Nil, Octal, Open, Or, RunaString, Semi, Sign, Walrus, Wild,
         },
     }, utils::compiler_outputs::CompilerOutputs,
 };
@@ -34,6 +34,8 @@ pub enum Keywords {
     Using,
     Unfold,
     Extend,
+    Reg,
+    RegOk,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,6 +68,10 @@ pub enum AssignOp {
     Div,
     Rem,
     And,
+    Or,
+    Xor,
+    Shl,
+    Shr,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +106,8 @@ pub enum TokenKind {
     Float(f64),
     Close(PBB),
     Hexa(i128),
+    /// `0b0101`: the value and how many binary digits were written (`0b01` has 2).
+    BinaryLiteral(i128, u32),
     Bool(bool),
     Open(PBB),
     DoubleColon,
@@ -155,11 +163,13 @@ fn is_keyword(identifier: &str) -> Option<Keywords> {
         "extend" => Some(Extend),
         "unfold" => Some(Unfold),
         "while" => Some(While),
-        "using" => Some(Using),
+        "using" | "ns_using" => Some(Using),
         "defer" => Some(Defer),
         "puts" => Some(Puts),
         "for" => Some(For),
         "fn" => Some(Fn),
+        "reg" => Some(Reg),
+        "reg_ok" => Some(RegOk),
         _ => None,
     }
 }
@@ -187,7 +197,11 @@ impl Scanner {
 
             let size = self.tokens.len();
 
-            if (ch.is_ascii_digit() && !(second == b'x' || second == b'o'))
+            let binary_prefix = ch == b'0'
+                && second == b'b'
+                && matches!(self.bytes.get(i + 2), Some(b'0' | b'1'));
+
+            if (ch.is_ascii_digit() && !(second == b'x' || second == b'o' || binary_prefix))
                 || ch == b'-' && second.is_ascii_digit()
             {
                 i += 1;
@@ -298,6 +312,22 @@ impl Scanner {
                     i += 1;
                     self.push(CompoundAssign(AssignOp::And))
                 }
+                b'|' if second == b'=' => {
+                    i += 1;
+                    self.push(CompoundAssign(AssignOp::Or))
+                }
+                b'^' if second == b'=' => {
+                    i += 1;
+                    self.push(CompoundAssign(AssignOp::Xor))
+                }
+                b'<' if second == b'<' && self.bytes.get(i + 2) == Some(&b'=') => {
+                    i += 2;
+                    self.push(CompoundAssign(AssignOp::Shl))
+                }
+                b'>' if second == b'>' && self.bytes.get(i + 2) == Some(&b'=') => {
+                    i += 2;
+                    self.push(CompoundAssign(AssignOp::Shr))
+                }
 
                 b'-' if second == b'-' => {
                     i += 1;
@@ -368,6 +398,25 @@ impl Scanner {
 
                     i -= 1;
                     self.push(Hexa(i128::from_str_radix(&number, 16).unwrap()));
+                }
+
+                b'0' if binary_prefix => {
+                    i += 2;
+                    let mut value: i128 = 0;
+                    let mut digits: u32 = 0;
+                    while i < self.bytes.len() && matches!(self.bytes[i], b'0' | b'1' | b'_') {
+                        if self.bytes[i] != b'_' {
+                            digits += 1;
+                            if digits > 127 {
+                                CompilerOutputs::fatal("Binary literal is too large (127 digits at most)");
+                                unreachable!();
+                            }
+                            value = (value << 1) | i128::from(self.bytes[i] - b'0');
+                        }
+                        i += 1;
+                    }
+                    i -= 1;
+                    self.push(BinaryLiteral(value, digits));
                 }
 
                 b'0' if second == b'o' => {

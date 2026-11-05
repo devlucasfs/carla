@@ -1,5 +1,9 @@
 unfold int main = fn();
 
+constexpr(runa: arch == avr)
+{   void _start = fn() { main(); }
+}
+
 constexpr(runa: arch == x86_64 and os == Linux)
 {   void _start = fn() { syscall! 0x3C(main()); }
 }
