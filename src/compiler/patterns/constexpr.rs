@@ -12,7 +12,7 @@ fn run(_: &mut Symbols, iterator: &mut ContextIterator<'_>) -> Result<bool, Stri
     match iterator.next() {
         Some(Common(Token {
             kind: RunaString(runa_expr),
-            line,
+            line, column
         })) => Ok(cbinds::Runa::constexpr(runa_expr)),
         _ => Err("Expected a Runa Code String into the constexpr keyword context block".into())
     }

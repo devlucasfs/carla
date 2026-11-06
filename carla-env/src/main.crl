@@ -1,4 +1,25 @@
+const std := @import("stdlib");
+
+void sleep = fn(int sz) {
+    for let i := 0; i <= sz; i++ {}
+}
+
 @_start
 int main = fn() {
+    std.serial.mcu();
+
+    let ddrb  := reg[0x04];
+    let portb := reg[0x05];
+
+    portb |= 1 << 5;
+
+    while true {
+        std.write(1, "Hello, world!\n\r", 15);
+        portb |= 1 << 5;
+        sleep(70000);
+        portb &= !(1 << 5);
+        sleep(70000);
+    }
+
     0
 }

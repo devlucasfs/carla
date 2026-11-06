@@ -1,25 +1,13 @@
 @outside {
-    ..@import("extensions");
-    ..@import("vector");
-    ..@import("stream");
-    ..@import("nashj");
-    ..@import("mem");
 }
 
 ns_using io = |_|;
+ns_using serial = |_|;
 ns_using routines = |_|;
 
 @outside down {
-    ..@import("std/io");
-    ..@import("std/croutines");
+    ..@import("core/serial");
+    ..@import("core/strings");
 }
 
-void write = fn(int fd, byte* data, uint size) {
-    constexpr(runa: os == Linux and arch == x86_64)
-    {   syscall! 0x1(fd, data, size); }
-}
-
-int read = fn(int fd, byte* buf, uint size) {
-    constexpr(runa: os == Linux and arch == x86_64)
-    {   return syscall! 0x0(fd, buf, size); }
-}
+..@import("core/ns/sys");

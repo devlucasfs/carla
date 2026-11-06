@@ -33,7 +33,7 @@ use crate::{
 
 const DEFAULT_INT: &str = "int";
 const DEFAULT_BOOL: &str = "bool";
-const DEFAULT_STR_BASE: &str = "byte";
+const DEFAULT_CSTRZ: &str = "c_strz";
 const DEFAULT_SYSCALL_RET: &str = "int";
 const DEFAULT_FN_REF: &str = "fn_ref";
 const DEFAULT_VOID: &str = "void";
@@ -163,6 +163,9 @@ pub enum Expr {
     Reg(RegRef, CarlaType),
     RegSlice(RegRef, Slice, CarlaType),
     RegSliceGet(RegRef, Slice, CarlaType),
+    /// `&temporary`: the value is materialized in a slot and the result is the slot's address.
+    /// It is only created by `value::f()`. Its type is always `T*`.
+    TempRef(Box<Expr>, CarlaType),
 }
 
 impl Expr {
@@ -183,7 +186,8 @@ impl Expr {
             | Expr::Deref(_, t)
             | Expr::Reg(_, t)
             | Expr::RegSlice(_, _, t)
-            | Expr::RegSliceGet(_, _, t) => t.clone(),
+            | Expr::RegSliceGet(_, _, t)
+            | Expr::TempRef(_, t) => t.clone(),
         }
     }
 
@@ -247,6 +251,9 @@ pub enum StepOp {
     Syscall(u64, Vec<Operand>),
     Cast(Operand, CarlaType),
     Deref(Operand),
+    /// Materializes the operand in a temporary slot (alive until the end of the statement)
+    /// and yields the slot's address. The operand may be an `Operand::Const`.
+    AddrOfTemp(Operand),
     /// Read of a register / mapped io (the latter is volatile).
     RegRead(RegRef),
     /// Read of bits `lo..lo+width` of a register, shifted down, zero-extended.
@@ -353,6 +360,10 @@ fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
         Expr::Deref(x, t) => {
             let a = lower(x, out);
             emit(out, t, StepOp::Deref(a))
+        }
+        Expr::TempRef(x, t) => {
+            let a = lower(x, out);
+            emit(out, t, StepOp::AddrOfTemp(a))
         }
         Expr::Reg(r, t) => emit(out, t, StepOp::RegRead(r.clone())),
         Expr::RegSliceGet(r, s, t) => emit(out, t, StepOp::RegSliceRead(r.clone(), *s)),
@@ -912,15 +923,31 @@ fn make_index(base: Expr, index: Expr, syms: &Symbols) -> Result<Expr, String> {
     make_deref(make_ptr_offset(BinOp::Add, base, index, syms)?)
 }
 
-fn self_ref(receiver: Expr) -> Result<Expr, String> {
+/// Builds the `self` argument of an extended call: always a POINTER to the receiver.
+///
+/// * a variable          -> `&variable`
+/// * `p.*` / `p[i]`      -> `p` (nothing is copied, `f` works on the real object)
+/// * any other value     -> only with `by_temp` (the `::` operator): the value is materialized
+///   in a temporary slot and `self` is the address of that slot, never the value itself.
+fn self_ref(receiver: Expr, by_temp: bool) -> Result<Expr, String> {
     match receiver {
         Expr::Var(name, ty) => Ok(Expr::Pointer(name, ty.pointer_to())),
         // `p.*.f()` / `p[i].f()`: `&(*p)` is just `p`. Nothing is copied, so `f` works on the
         // real object (a `let x := p.*` would work on a copy of it).
         Expr::Deref(ptr, _) => Ok(*ptr),
+        Expr::RegSlice(..) => Err(BARE_SLICE.into()),
+        other if by_temp => {
+            let ty = other.ty();
+            if is_void(&ty) {
+                return Err("can't use a `void` value as `self`".into());
+            }
+            // `self` is a pointer to the temporary, never the value itself
+            Ok(Expr::TempRef(Box::new(other), ty.pointer_to()))
+        }
         other => Err(format!(
-            "cannot take a reference to a temporary value of type `{}` to use as `self`; \
-             store it in a variable first (or call it on a pointer: `p.*.f()`)",
+            "cannot take a reference to a temporary value of type `{}` to use as `self` with `.`; \
+             call it with `::` (e.g. `value::f()`), store it in a variable first, \
+             or call it on a pointer: `p.*.f()`",
             other.ty().to_string()
         )),
     }
@@ -1077,6 +1104,7 @@ impl<'a, 'c> Parser<'a, 'c> {
                 }
                 self.it.next();
                 lhs = self.cast(lhs)?;
+                lhs = self.postfix(lhs)?;
                 continue;
             }
 
@@ -1111,6 +1139,9 @@ impl<'a, 'c> Parser<'a, 'c> {
     ///   `value.*`              reads the value behind a pointer
     ///   `value[i]`             reads element `i` (same as `(value + i).*`)
     ///   `value.function(args)` calls an extended function, passing `&value` as `self`
+    ///   `value::function(args)` like `.`, but it also accepts a temporary as the receiver
+    ///                           (`"text"::print()`): `self` is a pointer to a temporary slot
+    ///                           that lives until the end of the statement, never the value itself
     fn postfix(&mut self, mut lhs: Expr) -> Result<Expr, String> {
         loop {
             if self.at(&Dot) {
@@ -1134,7 +1165,20 @@ impl<'a, 'c> Parser<'a, 'c> {
                     return Err("Expected a function name or `*` after '.'".into());
                 };
                 let owner = lhs.ty();
-                lhs = self.extended_call(&owner, Some(lhs), member)?;
+                lhs = self.extended_call(&owner, Some(lhs), member, false)?;
+                continue;
+            }
+
+            if self.at(&DoubleColon) {
+                self.it.next();
+
+                let Some(member) = self.next_identifier() else {
+                    return Err(
+                        "Expected a function name after `::` (e.g. `\"text\"::print()`)".into(),
+                    );
+                };
+                let owner = lhs.ty();
+                lhs = self.extended_call(&owner, Some(lhs), member, true)?;
                 continue;
             }
 
@@ -1169,7 +1213,7 @@ impl<'a, 'c> Parser<'a, 'c> {
             Bool(b) => Ok(Expr::Boolean(*b, builtin(self.syms, DEFAULT_BOOL)?)),
             Str(s) => Ok(Expr::String(
                 s.clone(),
-                builtin(self.syms, DEFAULT_STR_BASE)?.pointer_to(),
+                builtin(self.syms, DEFAULT_CSTRZ)?,
             )),
             Nil => Ok(Expr::Nil),
             Float(_) => Err("Morgana doesn't have a float type yet".into()),
@@ -1299,14 +1343,18 @@ impl<'a, 'c> Parser<'a, 'c> {
             return Err(err());
         };
 
-        self.extended_call(&owner, None, member)
+        // no receiver on this path, so `by_temp` is unused
+        self.extended_call(&owner, None, member, false)
     }
 
+    /// `by_temp`: the call was written with `::`, so a temporary receiver is accepted and
+    /// passed as a pointer to a temporary slot.
     fn extended_call(
         &mut self,
         owner: &CarlaType,
         receiver: Option<Expr>,
         member: &str,
+        by_temp: bool,
     ) -> Result<Expr, String> {
         let full = abi::extension_symbol(owner, member);
 
@@ -1328,7 +1376,7 @@ impl<'a, 'c> Parser<'a, 'c> {
         let mut args = self.arguments(&full)?;
 
         if let Some(receiver) = receiver {
-            args.insert(0, self_ref(receiver)?);
+            args.insert(0, self_ref(receiver, by_temp)?);
         }
 
         Ok(Expr::Call(full, args, ret))
@@ -1522,7 +1570,9 @@ pub fn parse_place(
 fn has_side_effects(e: &Expr) -> bool {
     match e {
         Expr::Call(..) | Expr::CallIndirect(..) | Expr::Syscall(..) => true,
-        Expr::Unary(_, x, _) | Expr::Cast(x, _) | Expr::Deref(x, _) => has_side_effects(x),
+        Expr::Unary(_, x, _) | Expr::Cast(x, _) | Expr::Deref(x, _) | Expr::TempRef(x, _) => {
+            has_side_effects(x)
+        }
         Expr::Binary(_, l, r, _) => has_side_effects(l) || has_side_effects(r),
         _ => false,
     }
@@ -1618,6 +1668,10 @@ pub fn work(
 
     match next {
         Common(finish) if matches!(finish.kind, Comma | Semi) => Ok(Expression(compiled, false)),
-        _ => Err("Expected ; or , and also maybe EOF, after an expression".into()),
+        Common(tok) => Err(format!(
+            "Expected ; or , after an expression, found {:?}",
+            tok.kind
+        )),
+        _ => Err("Expected ; or , after an expression, found a block `(...)`/`[...]`/`{...}`".into()),
     }
 }

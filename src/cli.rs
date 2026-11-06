@@ -12,6 +12,7 @@ pub struct BRData {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Command {
     Version,
+    Upload(String, String, String),
     Build(BRData),
     Run(BRData),
 
@@ -63,6 +64,30 @@ pub enum Build {
     Auto,
 }
 
+#[cfg(any(target_os = "linux", target_os = "android"))]
+const UPLOAD_DEVICE: &'static str = "/dev/ttyUSB0";
+
+#[cfg(target_os = "windows")]
+const UPLOAD_DEVICE: &'static str = "COM3";
+
+#[cfg(target_os = "macos")]
+const UPLOAD_DEVICE: &'static str = "/dev/tty.usbserial";
+
+#[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
+const UPLOAD_DEVICE: &'static str = "/dev/cuaU0";
+
+#[cfg(target_os = "openbsd")]
+const UPLOAD_DEVICE: &'static str = "/dev/cua00";
+
+#[cfg(target_os = "netbsd")]
+const UPLOAD_DEVICE: &'static str = "/dev/dtyU0";
+
+#[cfg(target_os = "illumos")]
+const UPLOAD_DEVICE: &'static str = "/dev/term/a";
+
+#[cfg(target_os = "haiku")]
+const UPLOAD_DEVICE: &'static str = "/dev/ports/usb";
+
 impl CLI {
     fn spawn_error(message: &str) -> Self {
         Self {
@@ -94,6 +119,37 @@ impl CLI {
                 message: FatalCLIMessage::None,
                 command: Command::Version,
                 ..Default::default()
+            },
+
+            "upload" => {
+                if args.len() == 0 {
+                    return CLI::spawn_error("Enter a valid extensor to be uploaded");
+                }
+
+                let mut device   = String::from(UPLOAD_DEVICE);
+                let mut baudrate = String::from("115200");
+                let     target   = args.remove(0);
+
+                while args.len() > 0 {
+                    let arg = args.remove(0);
+                    let flags = ["--device", "--baudrate"];
+
+                    match arg.as_str() {
+                        "--device" => device = args.get(0).unwrap_or(&UPLOAD_DEVICE.into()).clone(),
+                        "--baudrate" => baudrate = args.get(0).unwrap_or(&UPLOAD_DEVICE.into()).clone(),
+                        _ => {}
+                    }
+
+                    if flags.contains(&arg.as_str()) {
+                        args.remove(0);
+                    }
+                }
+
+                Self {
+                    message: FatalCLIMessage::None,
+                    command: Command::Upload(target, device, baudrate),
+                    ..Default::default()
+                }
             },
 
             "build" | "run" => {

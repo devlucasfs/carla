@@ -110,7 +110,7 @@ impl Command {
 
         if !sake.exists() {
             CompilerOutputs::fatal_internal(
-                "Can't reach Samar eva's addapter file: That file is needed because into it has all compilation rules you are using for your peoject."
+                "Can't reach Samar Eva's addapter file: That file is needed because into it has all compilation rules you are using for your peoject."
             );
         }
 

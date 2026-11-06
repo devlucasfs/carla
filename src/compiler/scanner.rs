@@ -2,13 +2,21 @@ use crate::{
     compiler::scanner::{
         BinOP::{
             Different, Equals, Greater, GreaterEqual, IterConcat, IterConcatEq, Less, LessEqual,
-        }, BitOp::{AND, LSH, NOT, OR, RSH, XOR}, Keywords::{
-            As, Break, Const, Constexpr, Continue, Defer, Else, Extend, Extern, Fn, For, If, Let,
-            Mut, Puts, Reg, RegOk, Return, Syscall, Unfold, Using, Var, While,
-        }, MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star}, PBB::{Brace, Bracket, Paren}, TokenKind::{
-            And, Arrow, Bang, BinaryLiteral, BinaryOperator, BitOperator, Bool, Close, Colon, Comma, CompoundAssign, Dec, Dot, DoubleColon, Float, Hexa, Identifier, Inc, Integer, Keyword, MathOperator, Nil, Octal, Open, Or, RunaString, Semi, Sign, Walrus, Wild,
         },
-    }, utils::compiler_outputs::CompilerOutputs,
+        BitOp::{AND, LSH, NOT, OR, RSH, XOR},
+        Keywords::{
+            As, Break, Const, Constexpr, Continue, Defer, Else, Extend, Extern, Fn, For, If, Let,
+            Mut, Reg, RegOk, Return, Syscall, Unfold, Using, Var, While,
+        },
+        MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star},
+        PBB::{Brace, Bracket, Paren},
+        TokenKind::{
+            And, Arrow, Bang, BinaryLiteral, BinaryOperator, BitOperator, Bool, Close, Colon,
+            Comma, CompoundAssign, Dec, Dot, DoubleColon, Float, Hexa, Identifier, Inc, Integer,
+            Keyword, MathOperator, Nil, Octal, Open, Or, RunaString, Semi, Sign, Walrus, Wild,
+        },
+    },
+    utils::compiler_outputs::CompilerOutputs,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,7 +35,6 @@ pub enum Keywords {
     Syscall,
     Defer,
     Extern,
-    Puts,
     For,
     Fn,
     While,
@@ -131,6 +138,7 @@ pub enum TokenKind {
 pub struct Token {
     pub kind: TokenKind,
     pub line: isize,
+    pub column: isize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -138,11 +146,16 @@ pub struct Scanner {
     pub tokens: Vec<Token>,
     bytes: Vec<u8>,
     line: isize,
+    line_start: usize,
+    tok_start: usize,
+    tok_line: isize,
+    tok_line_start: usize,
 }
 
 const SEMI_TOKEN: &Token = &Token {
     kind: Semi,
     line: 0,
+    column: 0,
 };
 
 fn is_keyword(identifier: &str) -> Option<Keywords> {
@@ -165,7 +178,6 @@ fn is_keyword(identifier: &str) -> Option<Keywords> {
         "while" => Some(While),
         "using" | "ns_using" => Some(Using),
         "defer" => Some(Defer),
-        "puts" => Some(Puts),
         "for" => Some(For),
         "fn" => Some(Fn),
         "reg" => Some(Reg),
@@ -177,16 +189,39 @@ fn is_keyword(identifier: &str) -> Option<Keywords> {
 impl Scanner {
     pub fn new(scan: String) -> Self {
         Self {
-            bytes: scan.bytes().collect(),
+            bytes: scan.into_bytes(),
+            line: 1,
             ..Default::default()
         }
     }
 
+    fn column_of(&self, line_start: usize, idx: usize) -> isize {
+        let end = idx.min(self.bytes.len());
+        let start = line_start.min(end);
+        self.bytes[start..end]
+            .iter()
+            .filter(|b| (**b & 0xC0) != 0x80)
+            .count() as isize
+            + 1
+    }
+
+    fn newline(&mut self, idx: usize) {
+        self.line += 1;
+        self.line_start = idx + 1;
+    }
+
     fn push(&mut self, tk: TokenKind) {
+        let column = self.column_of(self.tok_line_start, self.tok_start);
         self.tokens.push(Token {
-            line: self.line,
+            line: self.tok_line,
+            column,
             kind: tk,
         });
+    }
+
+    fn fatal_at(&self, idx: usize, msg: impl std::fmt::Display) {
+        let col = self.column_of(self.line_start, idx);
+        CompilerOutputs::fatal(format!("[{}:{}] {}", self.line, col, msg));
     }
 
     pub fn read(&mut self) {
@@ -195,7 +230,9 @@ impl Scanner {
             let ch = self.bytes[i];
             let second = *self.bytes.get(i + 1).unwrap_or(&0u8);
 
-            let size = self.tokens.len();
+            self.tok_start = i;
+            self.tok_line = self.line;
+            self.tok_line_start = self.line_start;
 
             let binary_prefix = ch == b'0'
                 && second == b'b'
@@ -230,19 +267,15 @@ impl Scanner {
                     && [Semi, Open(Brace), Close(Brace), Comma]
                         .contains(&self.tokens.last().unwrap_or(SEMI_TOKEN).kind) =>
                 {
-                    for j in (i + 2)..self.bytes.len() {
-                        if self.bytes[j] == b'\n' {
-                            i = j;
-                            self.line += 1;
-                            break;
-                        }
+                    while i < self.bytes.len() && self.bytes[i] != b'\n' {
+                        i += 1;
                     }
                     continue;
                 }
 
-                b'\n' | b'\r' | b' ' => {
+                b'\n' | b'\r' | b' ' | b'\t' => {
                     if ch == b'\n' {
-                        self.line += 1;
+                        self.newline(i);
                     }
 
                     i += 1;
@@ -408,7 +441,10 @@ impl Scanner {
                         if self.bytes[i] != b'_' {
                             digits += 1;
                             if digits > 127 {
-                                CompilerOutputs::fatal("Binary literal is too large (127 digits at most)");
+                                self.fatal_at(
+                                    self.tok_start,
+                                    "Binary literal is too large (127 digits at most)",
+                                );
                                 unreachable!();
                             }
                             value = (value << 1) | i128::from(self.bytes[i] - b'0');
@@ -437,21 +473,23 @@ impl Scanner {
 
                     loop {
                         let Some(&c) = self.bytes.get(i) else {
-                            CompilerOutputs::fatal(unterminated);
+                            self.fatal_at(self.tok_start, unterminated);
                             unreachable!();
                         };
 
                         match c {
                             b'"' => break,
                             b'\n' => {
-                                CompilerOutputs::fatal(
-                                    "You can't to have a string with more than one Literal line",
+                                self.fatal_at(
+                                    self.tok_start,
+                                    "You can't have a string with more than one literal line",
                                 );
+                                unreachable!();
                             }
                             b'\\' => {
                                 i += 1;
                                 let Some(&e) = self.bytes.get(i) else {
-                                    CompilerOutputs::fatal(unterminated);
+                                    self.fatal_at(self.tok_start, unterminated);
                                     unreachable!();
                                 };
 
@@ -463,20 +501,29 @@ impl Scanner {
                                     b'\\' => b'\\',
                                     b'"' => b'"',
                                     b'x' => {
-                                        let hi = self.bytes.get(i + 1).and_then(|b| (*b as char).to_digit(16));
-                                        let lo = self.bytes.get(i + 2).and_then(|b| (*b as char).to_digit(16));
+                                        let hi = self
+                                            .bytes
+                                            .get(i + 1)
+                                            .and_then(|b| (*b as char).to_digit(16));
+                                        let lo = self
+                                            .bytes
+                                            .get(i + 2)
+                                            .and_then(|b| (*b as char).to_digit(16));
                                         let (Some(hi), Some(lo)) = (hi, lo) else {
-                                            CompilerOutputs::fatal("Expected two hex digits after \\x");
+                                            self.fatal_at(i, "Expected two hex digits after \\x");
                                             unreachable!();
                                         };
                                         i += 2;
                                         (hi * 16 + lo) as u8
                                     }
                                     other => {
-                                        CompilerOutputs::fatal(format!(
-                                            "Unknown escape sequence '\\{}'",
-                                            char::from(other)
-                                        ));
+                                        self.fatal_at(
+                                            i,
+                                            format!(
+                                                "Unknown escape sequence '\\{}'",
+                                                char::from(other)
+                                            ),
+                                        );
                                         unreachable!();
                                     }
                                 };
@@ -569,14 +616,17 @@ impl Scanner {
 
                         loop {
                             if i >= self.bytes.len() {
-                                CompilerOutputs::fatal("Unterminated runa block: expected ')'");
+                                self.fatal_at(
+                                    self.tok_start,
+                                    "Unterminated runa block: expected ')'",
+                                );
                                 break;
                             }
 
                             let b = self.bytes[i];
 
                             if b == b'\n' {
-                                self.line += 1;
+                                self.newline(i);
                             }
 
                             if b == b'"' && (i == 0 || self.bytes[i - 1] != b'\\') {
@@ -603,11 +653,6 @@ impl Scanner {
                     _ => self.push(Identifier(identifier)),
                 }
 
-                continue;
-            }
-
-            if size < self.bytes.len() {
-                i += 1;
                 continue;
             }
 

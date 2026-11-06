@@ -1,40 +1,40 @@
 extend stdlib.io {
-    Nashj.Qitah read_until = fn(Nashj* heap, byte b) {
-        uint cap = 64 as uint;
-        uint len = 0 as uint;
-        byte c = 0 as byte;
-
-        let mem := heap.*.alloc(cap);
-        let buf := mem.to_raw();
-
-        while true {
-            int n = stdlib.read(0, &c, 1);
-
-            if n <= 0 : break;
-            if c == b : break;
-
-            if len + 1 >= cap {
-                uint ncap = cap * 2;
-                let nmem := heap.*.alloc(ncap);
-                let nbuf := nmem.to_raw();
-
-                for uint i : 0..len {
-                    nbuf[i] = buf[i];
-                }
-
-                heap.*.flush(mem);
-                mem = nmem;
-                buf = nbuf;
-                cap = ncap;
-            }
-
-            buf[len] = c;
-            len = len + 1;
-        }
-
-        buf[len] = 0 as byte;
-        return mem;
-    }
+    -- Nashj.Qitah read_until = fn(Nashj* heap, byte b) {
+    --     uint cap = 64 as uint;
+    --     uint len = 0 as uint;
+    --     byte c = 0 as byte;
+    --
+    --     let mem := heap.*.alloc(cap);
+    --     let buf := mem.to_raw();
+    --
+    --     while true {
+    --         int n = stdlib.read(0, &c, 1);
+    --
+    --         if n <= 0 : break;
+    --         if c == b : break;
+    --
+    --         if len + 1 >= cap {
+    --             uint ncap = cap * 2;
+    --             let nmem := heap.*.alloc(ncap);
+    --             let nbuf := nmem.to_raw();
+    --
+    --             for uint i : 0..len {
+    --                 nbuf[i] = buf[i];
+    --             }
+    --
+    --             heap.*.flush(mem);
+    --             mem = nmem;
+    --             buf = nbuf;
+    --             cap = ncap;
+    --         }
+    --
+    --         buf[len] = c;
+    --         len = len + 1;
+    --     }
+    --
+    --     buf[len] = 0 as byte;
+    --     return mem;
+    -- }
 
     void print = fn(byte* msg) {
         stdlib.write(1, msg, msg.strlen());

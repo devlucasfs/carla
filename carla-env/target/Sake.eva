@@ -1,0 +1,14 @@
+last_change: "1793869314.+274780911"
+
+@314412181
+target: { arch: "x86_64" os: "linux" }
+tools: [ "as", "package", "ld", "package" ]
+linking: "ld $file -o $output"
+compiling: "as $file -O3 -o $output"
+
+@2195352966
+target: { arch: "avr_atmega328p" os: "none" }
+tools: [ "avr-gcc", "package", "avr-objdump", "package", "avrdude", "package" ]
+compiling: "avr-gcc -mmcu=atmega328p -Wall -Os -o $elf $file && avr-objcopy -O ihex -R .eeprom $elf $hex"
+linking: ""
+upload: "sudo avrdude -F -V -c arduino -p m328p -P $device -b $baudrate -U flash:w:$hex:i"

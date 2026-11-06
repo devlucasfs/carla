@@ -1,0 +1,21 @@
+using string = |uint, c_strz|;
+
+extend c_strz {
+    string to_string = fn(self) {
+        let size := 0 as uint;
+        while self.*[size] != 0 { size++; }
+        return size, self.*;
+    }
+}
+
+extend string {
+    void puts = fn(self) {
+        if var size, ptr := self.*; false {}
+        std.write(1, ptr, size);
+    }
+
+    void putsln = fn(self) {
+        string.puts(self);
+        "\n"::to_string()::puts();
+    }
+}

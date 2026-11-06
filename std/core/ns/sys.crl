@@ -1,0 +1,20 @@
+void write = fn(int fd, byte* data, uint size) {
+    constexpr(runa: os == Linux and arch == x86_64) {
+        syscall! 0x1(fd, data, size);
+    }
+
+    constexpr(runa: arch == avr) {
+        let ucsr0a := reg[0xC0];
+        let udr0   := reg[0xC6];
+
+        for uint i : 0..size {
+            while ucsr0a & (1 << 5) == 0 {}
+            udr0 = data[i] as int8;
+        }
+    }
+}
+
+int read = fn(int fd, byte* buf, uint size) {
+    constexpr(runa: os == Linux and arch == x86_64)
+    {   return syscall! 0x0(fd, buf, size); }
+}

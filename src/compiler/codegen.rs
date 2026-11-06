@@ -203,6 +203,18 @@ impl<'a> MorganaExpr<'a> {
                 (t, ty.pointer_to())
             }
 
+            StepOp::AddrOfTemp(op) => {
+                let (v, vty) = self.value(op)?;
+
+                let slot = fresh_name("tmp");
+                self.line(ir_declare(&slot, &vty.to_morgana(), &v));
+
+                let t = self.fresh();
+                self.line(format!("{t} = ptr_to {slot}"));
+
+                (t, s.ty.clone())
+            }
+
             StepOp::Syscall(number, args) => {
                 let mut parts = vec![number.to_string()];
 

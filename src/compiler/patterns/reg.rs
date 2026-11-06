@@ -11,16 +11,44 @@ use crate::{
 };
 
 pub const IO_DEFAULT_BITS: u32 = 8;
+const IO_DATA_BASE: u64 = 0;
+const IO_DATA_LAST: u64 = 0x5F;
 
 pub fn foo(id: &str, slice: Option<Slice>, size: u32) -> bool {
     let _ = (id, slice, size);
     true
 }
 
+/// Decide se um endereço mapeado (espaço de dados, como no datasheet) deve ser
+/// acessado via `io_*` (cabe em 0x20..=0x5F, vira `addr - 0x20`) ou via `mem_*`.
+pub fn bar(addr: u64, slice: Option<Slice>, size: u32) -> Result<RegKind, String> {
+    if let Some(s) = slice {
+        if s.lo as u64 + s.width as u64 > size as u64 {
+            return Err(format!(
+                "the slice {}..{} doesn't fit in {size} bits",
+                s.lo,
+                s.lo + s.width
+            ));
+        }
+    }
+
+    let bytes = (size as u64).div_ceil(8).max(1);
+    let last = addr.saturating_add(bytes - 1);
+
+    if addr >= IO_DATA_BASE && last <= IO_DATA_LAST {
+        Ok(RegKind::Io(addr - IO_DATA_BASE))
+    } else {
+        Ok(RegKind::Mem(addr))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum RegKind {
     Named(String),
+    /// Endereço no espaço de I/O (já com o offset de 0x20 removido).
     Io(u64),
+    /// Endereço no espaço de dados (`lds`/`sts`).
+    Mem(u64),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,18 +68,22 @@ impl RegRef {
         matches!(self.kind, RegKind::Io(_))
     }
 
+    pub fn is_mem(&self) -> bool {
+        matches!(self.kind, RegKind::Mem(_))
+    }
+
     fn operands(&self) -> String {
         match &self.kind {
             RegKind::Named(n) => format!("{n}, {}", self.bits),
-            RegKind::Io(a) => format!("{a:#x}, {}", self.bits),
+            RegKind::Io(a) | RegKind::Mem(a) => format!("{a:#x}, {}", self.bits),
         }
     }
 
     fn family(&self) -> &'static str {
-        if self.is_io() {
-            "io"
-        } else {
-            "reg"
+        match self.kind {
+            RegKind::Named(_) => "reg",
+            RegKind::Io(_) => "io",
+            RegKind::Mem(_) => "mem",
         }
     }
 
@@ -168,7 +200,7 @@ pub fn validate(raw: &Raw) -> Result<(RegRef, Option<Slice>), String> {
             }
             RegKind::Named(id.clone())
         }
-        Head::Addr(a) => RegKind::Io(*a),
+        Head::Addr(a) => bar(*a, slice, bits)?,
     };
 
     Ok((RegRef { kind, bits }, slice))

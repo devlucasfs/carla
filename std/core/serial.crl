@@ -1,0 +1,21 @@
+extend stdlib.serial {
+    void mcu = fn() {
+        constexpr(runa: arch == avr) {
+            let ucsr0a := reg[0xC0];
+            let ucsr0b := reg[0xC1];
+            let ucsr0c := reg[0xC2];
+            let ubrr0l := reg[0xC4];
+            let ubrr0h := reg[0xC5];
+            let udr0   := reg[0xC6];
+
+            ubrr0h = 0;
+            ubrr0l = 103;
+
+            let m := 1 as int8 << 2 as int8;
+            m |= 1 as int8 << 1 as int8;
+            ucsr0c = m;
+
+            ucsr0b = 1 as int8 << 3 as int8;
+        }
+    }
+}
