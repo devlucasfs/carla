@@ -35,10 +35,7 @@ unsafe extern "C" {
         path: *mut c_char,
         target: *mut c_char,
         extensor: *mut c_char,
-        libs: *mut c_char,
         sake: *mut c_char,
-        enable_then: bool,
-        use_ram: bool,
     );
 }
 
@@ -58,7 +55,7 @@ pub fn morgana_worker_entry() -> bool {
         return false;
     }
 
-    if args.len() < 9 {
+    if args.len() < 4 {
         eprintln!("Invalid Morgana worker arguments.");
         std::process::exit(2);
     }
@@ -66,21 +63,14 @@ pub fn morgana_worker_entry() -> bool {
     let path = CString::new(args[2].as_str()).unwrap();
     let target = CString::new(args[3].as_str()).unwrap();
     let extensor = CString::new(args[4].as_str()).unwrap();
-    let libs = CString::new(args[5].as_str()).unwrap();
-    let sake = CString::new(args[6].as_str()).unwrap();
-
-    let enable_then = args[7] == "1";
-    let use_ram = args[8] == "1";
+    let sake = CString::new(args[5].as_str()).unwrap();
 
     unsafe {
         __morgana_build(
             path.as_ptr() as *mut c_char,
             target.as_ptr() as *mut c_char,
             extensor.as_ptr() as *mut c_char,
-            libs.as_ptr() as *mut c_char,
-            sake.as_ptr() as *mut c_char,
-            enable_then,
-            use_ram,
+            sake.as_ptr() as *mut c_char
         );
     }
 
@@ -88,11 +78,7 @@ pub fn morgana_worker_entry() -> bool {
 }
 
 impl Command {
-    pub fn build(&self, c: &CLI) {
-        if c.use_ram {
-            CompilerOutputs::log("Using RAM instead of disk for assembly generation");
-        }
-
+    pub fn build(&self, _: &CLI) {
         let Ok(current_dir) = env::current_dir() else {
             CompilerOutputs::fatal("Can't read the current directory.");
             unreachable!();
@@ -231,7 +217,6 @@ impl Command {
             }
 
             let nodes = visitor::work(&contexts, &mut symbols);
-            let libs: Vec<String> = vec![];
 
             let code = Codegen::new(nodes).generate(&mut symbols, None);
 
@@ -249,10 +234,6 @@ impl Command {
             let build_target = build_target.clone();
             let sake = sake.clone();
 
-            let use_ram = c.use_ram;
-            let enable_then = c.enable_then;
-            let libs = libs.join(",");
-
             owners.push(owner.clone());
 
             println!("{} {}", "#".yellow().bold(), owner);
@@ -268,10 +249,7 @@ impl Command {
                     .arg(&morgana_temp)
                     .arg(&build_target)
                     .arg(&owner)
-                    .arg(&libs)
                     .arg(&sake)
-                    .arg(if enable_then { "1" } else { "0" })
-                    .arg(if use_ram { "1" } else { "0" })
                     .output();
 
                 let _ = fs::remove_file(&morgana_temp);

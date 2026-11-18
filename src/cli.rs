@@ -38,8 +38,6 @@ impl Default for FatalCLIMessage {
 pub struct CLI {
     pub message: FatalCLIMessage,
     pub command: Command,
-    pub use_ram: bool,
-    pub enable_then: bool
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -220,8 +218,6 @@ impl CLI {
                 };
 
                 Self {
-                    enable_then: args.contains(&"--samar-then".into()),
-                    use_ram: args.contains(&"--no-disk".into()),
                     message: FatalCLIMessage::None,
                     command: if command == "build" {
                         Command::Build(data)

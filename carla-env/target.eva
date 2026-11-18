@@ -8,8 +8,7 @@ main: "src/main.crl"
 constexpr: "core/constexpr.lua"
 
 builds: [
-    "avr_atmega328p",
-    "auto"
+    "avr_atmega328p"
 ]
 
 ' You can use here to specify the output format.

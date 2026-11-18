@@ -1,25 +1,22 @@
-const std := @import("stdlib");
+using pins = enum(
+    led = expr(1 << 5)
+);
 
-void sleep = fn(int sz) {
-    for let i := 0; i <= sz; i++ {}
+void sleep = fn(int cycles) {
+    for int i = 0; i <= cycles; i++ {}
 }
 
 @_start
 int main = fn() {
-    std.serial.mcu();
-
-    let ddrb  := reg[0x04];
+    let ddrb := reg[0x04];
     let portb := reg[0x05];
 
-    portb |= 1 << 5;
+    ddrb |= pins.led;
 
     while true {
-        std.write(1, "Hello, world!\n\r", 15);
-        portb |= 1 << 5;
-        sleep(70000);
-        portb &= !(1 << 5);
-        sleep(70000);
+        portb |= pins.led;
+        sleep(50000);
+        portb &= !(pins.led);
+        sleep(50000);
     }
-
-    0
 }

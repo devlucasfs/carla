@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use crate::compiler::patterns::reg::{RegRef, Slice};
 use crate::compiler::{
     codegen::Codegen,
-    patterns::{expressions::ExprId, types::CarlaType},
+    patterns::{expressions::ExprId, types::CarlaType, reg::{Slice, RegRef, RegKind}},
     symbols::Symbols,
 };
 
@@ -71,6 +70,47 @@ impl<'a> MorganaExpr<'a> {
             register_steps: HashMap::new(),
             result_register: None,
         }
+    }
+}
+
+impl RegRef {
+    pub fn is_io(&self) -> bool {
+        matches!(self.kind, RegKind::Io(_))
+    }
+
+    pub fn is_mem(&self) -> bool {
+        matches!(self.kind, RegKind::Mem(_))
+    }
+
+    fn operands(&self) -> String {
+        match &self.kind {
+            RegKind::Named(n) => format!("{n}, {}", self.bits),
+            RegKind::Io(a) | RegKind::Mem(a) => format!("{a:#x}, {}", self.bits),
+        }
+    }
+
+    fn family(&self) -> &'static str {
+        match self.kind {
+            RegKind::Named(_) => "reg",
+            RegKind::Io(_) => "io",
+            RegKind::Mem(_) => "mem",
+        }
+    }
+
+    pub fn ir_load(&self, dest: &str) -> String {
+        format!("{dest} = {}_load {}", self.family(), self.operands())
+    }
+
+    pub fn ir_store(&self, value: &str) -> String {
+        format!("{}_store {}, {value}", self.family(), self.operands())
+    }
+
+    pub fn ir_get(&self, dest: &str, s: &Slice) -> String {
+        format!("{dest} = {}_get {}, {}, {}", self.family(), self.operands(), s.lo, s.width)
+    }
+
+    pub fn ir_set(&self, s: &Slice, value: &str) -> String {
+        format!("{}_set {}, {}, {}, {value}", self.family(), self.operands(), s.lo, s.width)
     }
 }
 
@@ -185,7 +225,7 @@ pub fn ir_jmp(name: &str) -> String {
 pub fn ir_jz(cond: &str, name: &str) -> String {
     format!("brez {cond}, {name}")
 }
-/// `brnz cond, L` — salta se cond != 0
+
 pub fn ir_jnz(cond: &str, name: &str) -> String {
     format!("brnz {cond}, {name}")
 }
@@ -204,24 +244,14 @@ pub fn ir_extract(dst: &str, ty: &MorganaType, src: &str, index: usize) -> Strin
     format!("{dst} = extract {} {src}, {index}", ty.to_string())
 }
 
-/// `dst = ptr_to src` — address of a variable
 pub fn ir_addr_of(dst: &str, src: &str) -> String {
     format!("{dst} = ptr_to {src}")
 }
 
-/// `dst = deref ty ptr` — load a `ty` from the address `ptr`
 pub fn ir_deref(dst: &str, ty: &MorganaType, ptr: &str) -> String {
     format!("{dst} = deref {} {ptr}", ty.to_string())
 }
 
-/// Destructures the tuple value `src`: `names[i]` receives the element of type `types[i]`
-/// that lives `offsets[i]` bytes after the start of the tuple. `None` is `_` and emits nothing.
-///
-/// The tuple is kept in a local, its address is taken once (`ptr_to`, parked in a pointer
-/// variable) and every element is
-/// read with plain pointer arithmetic (`add ptr, offset` + `deref`), exactly what `p + n` and
-/// `p.*` produce in expressions. The element is then declared like any other local:
-/// `alloc` + `store` for scalars (variables are slots read with `load`), `move` for a nested tuple.
 pub fn ir_destructure(
     src: &str,
     names: &[Option<String>],
@@ -242,9 +272,6 @@ pub fn ir_destructure(
     lines.push(ir_move(&tuple, src));
     lines.push(ir_addr_of(&addr, &tuple));
 
-    // The result of a `ptr_to` can't be the operand of an `add` directly (the backend reads it
-    // as a slot, not as an address; same limit as `&x + n` in expressions). So the address is
-    // parked in a pointer variable and `load`ed for every element.
     lines.push(ir_const(&base, &MorganaType::Ptr, &addr));
 
     for ((name, ty), offset) in names.iter().zip(types).zip(offsets) {
@@ -253,7 +280,6 @@ pub fn ir_destructure(
         let cur = format!("tc{}", id());
         lines.push(format!("{cur} = load {base}"));
 
-        // the first element sits at offset 0: the base pointer already is its address
         let at = if *offset == 0 {
             cur
         } else {

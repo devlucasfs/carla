@@ -18,4 +18,14 @@ extend string {
         string.puts(self);
         "\n"::to_string()::puts();
     }
+    
+    uint len = fn(self) {
+        if var sz, _ := self.*; false {}
+        sz
+    } 
+    
+    c_strz as_cstr = fn(self) {
+        if var _, ptr := self.*; false {}
+        ptr
+    }
 }

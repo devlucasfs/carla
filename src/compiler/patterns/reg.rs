@@ -13,14 +13,28 @@ use crate::{
 pub const IO_DEFAULT_BITS: u32 = 8;
 const IO_DATA_BASE: u64 = 0;
 const IO_DATA_LAST: u64 = 0x5F;
+const MAX_REG_BITS: u32 = 128;
 
 pub fn foo(id: &str, slice: Option<Slice>, size: u32) -> bool {
-    let _ = (id, slice, size);
-    true
+    let mut chars = id.chars();
+    let valid_id = match chars.next() {
+        Some(c) if c.is_alphabetic() || c == '_' => chars.all(|c| c.is_alphanumeric() || c == '_'),
+        _ => false,
+    };
+    if !valid_id {
+        return false;
+    }
+
+    if size == 0 || size > MAX_REG_BITS {
+        return false;
+    }
+
+    match slice {
+        Some(s) => s.lo as u64 + s.width as u64 <= size as u64,
+        None => true,
+    }
 }
 
-/// Decide se um endereço mapeado (espaço de dados, como no datasheet) deve ser
-/// acessado via `io_*` (cabe em 0x20..=0x5F, vira `addr - 0x20`) ou via `mem_*`.
 pub fn bar(addr: u64, slice: Option<Slice>, size: u32) -> Result<RegKind, String> {
     if let Some(s) = slice {
         if s.lo as u64 + s.width as u64 > size as u64 {
@@ -45,9 +59,7 @@ pub fn bar(addr: u64, slice: Option<Slice>, size: u32) -> Result<RegKind, String
 #[derive(Debug, Clone, PartialEq)]
 pub enum RegKind {
     Named(String),
-    /// Endereço no espaço de I/O (já com o offset de 0x20 removido).
     Io(u64),
-    /// Endereço no espaço de dados (`lds`/`sts`).
     Mem(u64),
 }
 
@@ -61,47 +73,6 @@ pub struct RegRef {
 pub struct Slice {
     pub lo: u32,
     pub width: u32,
-}
-
-impl RegRef {
-    pub fn is_io(&self) -> bool {
-        matches!(self.kind, RegKind::Io(_))
-    }
-
-    pub fn is_mem(&self) -> bool {
-        matches!(self.kind, RegKind::Mem(_))
-    }
-
-    fn operands(&self) -> String {
-        match &self.kind {
-            RegKind::Named(n) => format!("{n}, {}", self.bits),
-            RegKind::Io(a) | RegKind::Mem(a) => format!("{a:#x}, {}", self.bits),
-        }
-    }
-
-    fn family(&self) -> &'static str {
-        match self.kind {
-            RegKind::Named(_) => "reg",
-            RegKind::Io(_) => "io",
-            RegKind::Mem(_) => "mem",
-        }
-    }
-
-    pub fn ir_load(&self, dest: &str) -> String {
-        format!("{dest} = {}_load {}", self.family(), self.operands())
-    }
-
-    pub fn ir_store(&self, value: &str) -> String {
-        format!("{}_store {}, {value}", self.family(), self.operands())
-    }
-
-    pub fn ir_get(&self, dest: &str, s: &Slice) -> String {
-        format!("{dest} = {}_get {}, {}, {}", self.family(), self.operands(), s.lo, s.width)
-    }
-
-    pub fn ir_set(&self, s: &Slice, value: &str) -> String {
-        format!("{}_set {}, {}, {}, {value}", self.family(), self.operands(), s.lo, s.width)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

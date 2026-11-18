@@ -1,12 +1,12 @@
-cargo build
+cargo build --release
 cd carla-env
-../target/debug/rewrite build -useram
+../target/release/rewrite build -useram
 
-echo
-echo
-echo "Uploading via Carla (./test.sh)"
-echo
-echo
+# echo
+# echo
+# echo "Uploading via Carla (./test.sh)"
+# echo
+# echo
 
-../target/debug/rewrite upload avr_atmega328p
+# ../target/debug/rewrite upload avr_atmega328p
 cd ..
