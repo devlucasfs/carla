@@ -1,35 +1,11 @@
 @_start
 int main = fn() {
-    uint32 a = reg[vreg, xmm0, 128, u32, 0];
-    uint32 b = reg[vreg, xmm0, 128, u32, 1];
-    uint32 c = reg[vreg, xmm0, 128, u32, 2];
-    uint32 d = reg[vreg, xmm0, 128, u32, 3];
+    uint32 s = reg[vreg, xmm0, 128, u32, 0];
 
-    uint32 e = reg[vreg, xmm1, 128, u32, 0];
-    uint32 f = reg[vreg, xmm1, 128, u32, 1];
-    uint32 g = reg[vreg, xmm1, 128, u32, 2];
-    uint32 h = reg[vreg, xmm1, 128, u32, 3];
-    a = 12;
-    b = 25;
-    c = 37;
-    d = 49;
-    e = 0 + (a * 3) + (b - 5);
-    f = 0 + (b * 2) + (c / 2);
-    g = 0 + (c * 4) - (d * 2);
-    h = 0 + (d + a) * 3;
-    let sum := e as int
-             + f as int
-             + g as int
-             + h as int;
+    s = 1929102;
 
-    let expected := 56 + 68 + 50 + 183;
-    if sum != expected {
-        return 1;
-    }
+    s &= !(0b1111111111);
+    s |=  1023;
 
-    let cross := 0 + (e * 2) + (f * 3)
-               + (g * 4) + (h * 5);
-
-    if cross != 1453 : return 2;
-    return 0;
+    return s;
 }
