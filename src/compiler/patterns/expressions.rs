@@ -7,7 +7,7 @@ use crate::{
         nesting::Context::{self, Block, Common},
         node::Node::{self, Expression},
         patterns::{
-            reg::{self, RegRef, Slice},
+            reg::{self, Loc, Slice},
             types::{self, Base, CarlaType},
         },
         scanner::{
@@ -38,8 +38,7 @@ const DEFAULT_SYSCALL_RET: &str = "int";
 const DEFAULT_FN_REF: &str = "fn_ref";
 const DEFAULT_VOID: &str = "void";
 
-const BARE_SLICE: &str = "a `reg[.., lo..hi]` slice isn't a value: set it with `= 0b...` or read it with `.*`";
-
+const BARE_SLICE: &str = "a bit slice `reg[KIND, target, .., lo..hi]` isn't a value: set it with `= 0b...` or read it with `.*` (a whole SIMD lane, without a range, is a value and needs neither)";
 mod bp {
     pub const LOG_OR: (u8, u8) = (1, 2);
     pub const LOG_AND: (u8, u8) = (3, 4);
@@ -160,9 +159,9 @@ pub enum Expr {
     Binary(BinOp, Box<Expr>, Box<Expr>, CarlaType),
     Cast(Box<Expr>, CarlaType),
     Deref(Box<Expr>, CarlaType),
-    Reg(RegRef, CarlaType),
-    RegSlice(RegRef, Slice, CarlaType),
-    RegSliceGet(RegRef, Slice, CarlaType),
+    Reg(Loc, CarlaType),
+    RegSlice(Loc, Slice, CarlaType),
+    RegSliceGet(Loc, Slice, CarlaType),
     /// `&temporary`: the value is materialized in a slot and the result is the slot's address.
     /// It is only created by `value::f()`. Its type is always `T*`.
     TempRef(Box<Expr>, CarlaType),
@@ -254,10 +253,11 @@ pub enum StepOp {
     /// Materializes the operand in a temporary slot (alive until the end of the statement)
     /// and yields the slot's address. The operand may be an `Operand::Const`.
     AddrOfTemp(Operand),
-    /// Read of a register / mapped io (the latter is volatile).
-    RegRead(RegRef),
-    /// Read of bits `lo..lo+width` of a register, shifted down, zero-extended.
-    RegSliceRead(RegRef, Slice),
+    /// Read of a location (reg, sreg, vreg, mem or io; the last two are volatile).
+    RegRead(Loc),
+    /// Read of bits `lo..lo+width` of a location, shifted down, zero-extended.
+    /// For a vreg lane this is already the absolute bit range of the lane.
+    RegSliceRead(Loc, Slice),
     Logical(BinOp, Operand, Vec<Step>, Operand),
 }
 
@@ -304,6 +304,16 @@ impl Iterator for ExprIterator {
         let step = self.steps.get(self.pos)?.clone();
         self.pos += 1;
         Some(step)
+    }
+}
+
+fn slice_value_bits(l: &Loc, s: &Slice) -> u32 {
+    if let Some(lane) = &l.lane {
+        lane.ty.bits
+    } else if l.bits <= 128 {
+        l.bits
+    } else {
+        s.width.next_power_of_two().max(8)
     }
 }
 
@@ -1151,9 +1161,12 @@ impl<'a, 'c> Parser<'a, 'c> {
                     self.it.next();
                     lhs = match lhs {
                         Expr::RegSlice(r, s, t) => Expr::RegSliceGet(r, s, t),
+                        Expr::RegSliceGet(r, s, t) if r.is_whole_lane(&s) => {
+                            Expr::RegSliceGet(r, s, t)
+                        }
                         Expr::Reg(..) => {
                             return Err("`reg[..]` without a slice is already a value; `.*` only \
-                                        reads a slice (`reg[ax, 64, 0..3].*`)"
+                                        reads a slice (`reg[reg, ax, 64, 0..3].*`)"
                                 .into())
                         }
                         other => make_deref(other)?,
@@ -1411,48 +1424,57 @@ impl<'a, 'c> Parser<'a, 'c> {
     /// The arguments are read straight from the tokens (not as expressions): `ax` is a register
     /// name, not a variable.
     fn reg(&mut self, probe: bool) -> Result<Expr, String> {
-        let kw = if probe { "reg_ok" } else { "reg" };
+           let kw = if probe { "reg_ok" } else { "reg" };
 
-        let Some(Block(Bracket, ctx)) = self.it.next() else {
-            return Err(format!(
-                "Expected `[...]` after `{kw}`, e.g. `{kw}[ax, 64]`, `{kw}[0x24]` or `{kw}[ax, 64, 0..3]`"
-            ));
-        };
+           let Some(Block(Bracket, ctx)) = self.it.next() else {
+               return Err(format!(
+                   "Expected `[...]` after `{kw}`, e.g. `{kw}[reg, ax, 64]`, `{kw}[io, 0x24]` or `{kw}[vreg, xmm0, 128, u32, 2]`"
+               ));
+           };
 
-        let mut sub = ContextIterator::new(ctx.as_slice(), 0);
-        let mut toks: Vec<&TokenKind> = vec![];
-        while let Some(c) = sub.next() {
-            match c {
-                Common(tk) => toks.push(&tk.kind),
-                _ => {
-                    return Err(format!(
-                        "`{kw}[...]` only takes register names, numbers, `,` and `..`"
-                    ))
+           let mut sub = ContextIterator::new(ctx.as_slice(), 0);
+           let mut toks: Vec<&TokenKind> = vec![];
+           while let Some(c) = sub.next() {
+               match c {
+                   Common(tk) => toks.push(&tk.kind),
+                   _ => {
+                       return Err(format!(
+                           "`{kw}[...]` only takes names, numbers, `,` and `..`"
+                       ))
+                   }
+               }
+           }
+
+           let raw = reg::parse_args(&toks).map_err(|e| format!("`{kw}[...]`: {e}"))?;
+           let checked = reg::validate(&raw);
+
+           if probe {
+               let bool_ty = builtin(self.syms, DEFAULT_BOOL)?;
+               return Ok(Expr::Boolean(checked.is_ok(), bool_ty));
+           }
+
+           let (l, slice) = checked.map_err(|e| format!("`reg[...]`: {e}"))?;
+           match slice {
+               None => {
+                   let ty = reg::int_type(self.syms, l.bits, true)?;
+                   Ok(Expr::Reg(l, ty))
+               }
+               Some(s) => {
+                    let whole_lane = l.lane.is_some() && raw.range.is_none();
+
+                    let ty = match (&l.lane, raw.range) {
+                        (Some(lane), None) => lane.ty.value_type(self.syms)?,
+                        _ => reg::int_type(self.syms, slice_value_bits(&l, &s), false)?,
+                    };
+
+                    if whole_lane {
+                        Ok(Expr::RegSliceGet(l, s, ty))   // already a value
+                    } else {
+                        Ok(Expr::RegSlice(l, s, ty))      // bit slice: needs `.*` or `= 0b...`
+                    }
                 }
-            }
-        }
-
-        // a syntax error is an error even in `reg_ok`; only the values can make it `false`
-        let raw = reg::parse_args(&toks).map_err(|e| format!("`{kw}[...]`: {e}"))?;
-        let checked = reg::validate(&raw);
-
-        if probe {
-            let bool_ty = builtin(self.syms, DEFAULT_BOOL)?;
-            return Ok(Expr::Boolean(checked.is_ok(), bool_ty));
-        }
-
-        let (r, slice) = checked.map_err(|e| format!("`reg[...]`: {e}"))?;
-        match slice {
-            None => {
-                let ty = reg::int_type(self.syms, r.bits, true)?;
-                Ok(Expr::Reg(r, ty))
-            }
-            Some(s) => {
-                let ty = reg::int_type(self.syms, r.bits, false)?;
-                Ok(Expr::RegSlice(r, s, ty))
-            }
-        }
-    }
+           }
+       }
 
     fn syscall(&mut self) -> Result<Expr, String> {
         let err = "Expected a hexadecimal syscall number after `syscall` (e.g. `syscall 0x01(...)`)";

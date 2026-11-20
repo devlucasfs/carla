@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use crate::compiler::{
-    codegen::Codegen,
-    patterns::{expressions::ExprId, types::CarlaType, reg::{Slice, RegRef, RegKind}},
-    symbols::Symbols,
+    codegen::Codegen, patterns::{expressions::ExprId, reg::{Access, Loc, Slice, Space}, types::CarlaType}, symbols::Symbols,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,9 +42,9 @@ pub enum MorganaContext {
 
 #[derive(Debug)]
 pub struct MorganaExpr<'a> {
-    pub registers: HashMap<String, (RegRef, Option<Slice>)>,
-    pub register_steps: HashMap<ExprId, (RegRef, Option<Slice>, usize)>,
-    pub result_register: Option<(RegRef, Option<Slice>, usize)>,
+    pub registers: HashMap<String, (Loc, Option<Slice>)>,
+    pub register_steps: HashMap<ExprId, (Loc, Option<Slice>, usize)>,
+    pub result_register: Option<(Loc, Option<Slice>, usize)>,
     pub syms: &'a mut Symbols,
     pub ctx: MorganaContext,
     pub vals: HashMap<ExprId, (String, CarlaType)>,
@@ -73,28 +71,68 @@ impl<'a> MorganaExpr<'a> {
     }
 }
 
-impl RegRef {
+impl Loc {
+    pub fn is_whole_lane(&self, s: &Slice) -> bool {
+        matches!(&self.lane, Some(l) if s.width == l.ty.bits)
+    }
+
+    pub fn is_reg(&self) -> bool {
+        matches!(self.space, Space::Reg(_))
+    }
+
+    pub fn is_sreg(&self) -> bool {
+        matches!(self.space, Space::Sreg(_))
+    }
+
+    pub fn is_vreg(&self) -> bool {
+        matches!(self.space, Space::Vreg(_))
+    }
+
     pub fn is_io(&self) -> bool {
-        matches!(self.kind, RegKind::Io(_))
+        matches!(self.space, Space::Io(_))
     }
 
     pub fn is_mem(&self) -> bool {
-        matches!(self.kind, RegKind::Mem(_))
+        matches!(self.space, Space::Mem(_))
     }
 
     fn operands(&self) -> String {
-        match &self.kind {
-            RegKind::Named(n) => format!("{n}, {}", self.bits),
-            RegKind::Io(a) | RegKind::Mem(a) => format!("{a:#x}, {}", self.bits),
+        match &self.space {
+            Space::Reg(n) | Space::Sreg(n) | Space::Vreg(n) => format!("{n}, {}", self.bits),
+            Space::Io(a) | Space::Mem(a) => format!("{a:#x}, {}", self.bits),
         }
     }
 
     fn family(&self) -> &'static str {
-        match self.kind {
-            RegKind::Named(_) => "reg",
-            RegKind::Io(_) => "io",
-            RegKind::Mem(_) => "mem",
+        match self.space {
+            Space::Reg(_) => "reg",
+            Space::Sreg(_) => "sreg",
+            Space::Vreg(_) => "vreg",
+            Space::Io(_) => "io",
+            Space::Mem(_) => "mem",
         }
+    }
+
+    /// Reads (`load`, `get`) are refused on a `wo` location.
+    pub fn check_load(&self) -> Result<(), String> {
+        match self.access {
+            Access::Wo => Err("this location is write-only (`wo`): it can't be read".into()),
+            _ => Ok(()),
+        }
+    }
+
+    /// Writes (`store`) are refused on a `ro` location.
+    pub fn check_store(&self) -> Result<(), String> {
+        match self.access {
+            Access::Ro => Err("this location is read-only (`ro`): it can't be written".into()),
+            _ => Ok(()),
+        }
+    }
+
+    /// `set` reads the old value, replaces the bits and writes it back, so it needs both.
+    pub fn check_modify(&self) -> Result<(), String> {
+        self.check_load()?;
+        self.check_store()
     }
 
     pub fn ir_load(&self, dest: &str) -> String {

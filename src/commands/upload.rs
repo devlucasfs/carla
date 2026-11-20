@@ -12,7 +12,6 @@ unsafe extern "C" {
     );
 }
 
-
 impl Command {
     pub fn upload(&self, params: &CLI) {
         let Ok(current_dir) = env::current_dir() else {

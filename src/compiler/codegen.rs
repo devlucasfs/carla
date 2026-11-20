@@ -16,7 +16,7 @@ use crate::{
             for_loop::ForLoop,
             incdec::IncDec,
             lambda::LambdaRunner,
-            reg::{RegRef, Slice},
+            reg::{Loc, Slice},
             types::CarlaType,
             unfold::Unfold,
             while_loop::WhileLoop,
@@ -44,7 +44,13 @@ pub struct Codegen {
     pub ret: Option<CarlaType>,
 
     // Variáveis que representam localizações de registradores ou endereços de I/O.
-    pub registers: HashMap<String, (RegRef, Option<Slice>)>,
+    pub registers: HashMap<String, (Loc, Option<Slice>)>,
+}
+
+fn require(res: Result<(), String>) {
+    if let Err(e) = res {
+        CompilerOutputs::fatal(e);
+    }
 }
 
 fn fresh_name(prefix: &str) -> String {
@@ -257,6 +263,7 @@ impl<'a> MorganaExpr<'a> {
             }
 
             StepOp::RegRead(r) => {
+                r.check_load()?;
                 let start = self.out.len();
                 let t = self.fresh();
 
@@ -269,6 +276,7 @@ impl<'a> MorganaExpr<'a> {
             }
 
             StepOp::RegSliceRead(r, slice) => {
+                r.check_load()?;
                 let start = self.out.len();
                 let t = self.fresh();
 
@@ -377,6 +385,7 @@ impl<'a> MorganaExpr<'a> {
                 let t = self.fresh();
 
                 if let Some((reg, slice)) = self.registers.get(name).cloned() {
+                    reg.check_load()?;
                     match slice {
                         Some(slice) => self.line(reg.ir_get(&t, &slice)),
                         None => self.line(reg.ir_load(&t)),
@@ -1332,15 +1341,14 @@ impl Codegen {
             Target::Var(name) => {
                 let (value, _) = self.eval(sym, &a.value);
 
-                if let Some((reg, slice)) =
-                    self.registers.get(name).cloned()
-                {
+                if let Some((reg, slice)) = self.registers.get(name).cloned() {
                     match slice {
                         Some(slice) => {
+                            require(reg.check_modify());
                             self.emit(reg.ir_set(&slice, &value));
                         }
-
                         None => {
+                            require(reg.check_store());
                             self.emit(reg.ir_store(&value));
                         }
                     }
@@ -1361,11 +1369,13 @@ impl Codegen {
             }
 
             Target::Reg(r) => {
+                require(r.check_store());
                 let (value, _) = self.eval(sym, &a.value);
                 self.emit(r.ir_store(&value));
             }
 
             Target::RegSlice(r, slice) => {
+                require(r.check_modify());
                 let (value, _) = self.eval(sym, &a.value);
                 self.emit(r.ir_set(slice, &value));
             }
@@ -1377,6 +1387,10 @@ impl Codegen {
         let (cur, next) = (fresh_name("t"), fresh_name("t"));
 
         let location = self.registers.get(&s.name).cloned();
+
+        if let Some((reg, _)) = &location {
+            require(reg.check_modify());
+        }
 
         match &location {
             Some((reg, Some(slice))) => {

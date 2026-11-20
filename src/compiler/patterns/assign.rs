@@ -6,7 +6,7 @@ use crate::{
         patterns::{
             expressions::{self, BinOp, Compiled, Expr},
             incdec,
-            reg::{RegRef, Slice},
+            reg::{Loc, Slice},
             types::CarlaType,
         },
         scanner::{
@@ -28,10 +28,16 @@ pub enum Target {
     Var(String),
     /// `p.* = ...` / `p[i] = ...`: the expression is the ADDRESS (`p`, or `p + i * size`).
     Deref(Compiled),
-    /// `reg[ax, 64] = ...` / `reg[0x25] |= ...` (a `reg_t`): the whole register.
-    Reg(RegRef),
-    /// `reg[ax, 64, 0..3] = 0b01;` (a `reg_s_t`): only those bits, `value` is a binary literal.
-    RegSlice(RegRef, Slice),
+    /// `reg[reg, ax, 64] = ...` / `reg[io, 0x25] |= ...` / `reg[vreg, xmm0, 128] = ...`:
+    /// the whole location.
+    Reg(Loc),
+    /// Part of a location:
+    ///  * `reg[reg, ax, 64, 0..3] = 0b01;` only those bits, `value` is a binary literal;
+    ///  * `reg[vreg, ymm0, 256, u32, 5] = x + 1;` a whole SIMD lane, which is a value of the
+    ///    lane's type and accepts any expression, compound operators, `++` and `--`.
+    ///
+    /// The slice is always the absolute bit range.
+    RegSlice(Loc, Slice),
 }
 
 /// Assignment to a place:
@@ -43,12 +49,17 @@ pub enum Target {
 /// ```
 ///
 /// ```text
-/// reg[ax, 64] &= 0x0123;       reg[0x25] |= 0x01;       reg[ax, 64, 0..3] = 0b01;
+/// reg[reg, ax, 64] &= 0x0123;      reg[io, 0x25] |= 0x01;      reg[reg, ax, 64, 0..3] = 0b01;
+/// reg[mem, 0x2000, 32, wo] = 1;    reg[vreg, ymm0, 256, u32, 5] += 1;
 /// ```
 ///
 /// A compound assignment is already expanded by the parser: `x += 1` is stored as
 /// `x = x + 1` inside `value`, so the code generator only evaluates `value` and stores it.
 /// `ty` is the type of the place (the type of the value that gets stored).
+///
+/// Access modes (`ro` / `wo` / `rw`) are checked here, at the statement, so the error points
+/// at the assignment: `=` needs write access, everything that also reads the old value
+/// (compound operators, `++`, `--`, a bit slice, a lane) needs both.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Assign {
     pub target: Target,
@@ -103,15 +114,23 @@ fn bin_op(op: &AssignOp) -> BinOp {
 
 const EXPECTED: &str = "Expected `=`, a compound operator (`+=`...), `++` or `--` after the left side of an assignment. The left side must be a variable, `p.*`, `p[i]` or `reg[...]` (`raw + i` is a value, not a place: use `raw[i] = ...`)";
 
-const EXPECTED_SLICE: &str = "A `reg[.., lo..hi]` slice is set with `=` and a binary literal, e.g. `reg[ax, 64, 0..3] = 0b01;` (compound operators, `++` and `--` aren't allowed on a slice)";
+const EXPECTED_SLICE: &str = "A `reg[KIND, .., lo..hi]` bit slice is set with `=` and a binary literal, e.g. `reg[reg, ax, 64, 0..3] = 0b01;` (compound operators, `++` and `--` aren't allowed on a bit slice; a whole SIMD lane is a value and accepts them)";
+
+/// A slice that covers exactly one SIMD lane is a value of the lane's type, not a bit field.
+fn is_whole_lane(loc: &Loc, slice: &Slice) -> bool {
+    matches!(&loc.lane, Some(lane) if slice.width == lane.ty.bits)
+}
 
 /// `reg[..., lo..hi] = 0b...;`: only `=` with a binary literal that fits in the slice.
 fn assign_slice(
-    reg: &RegRef,
+    loc: &Loc,
     slice: Slice,
     ty: &CarlaType,
     it: &mut ContextIterator<'_>,
 ) -> Result<Node, String> {
+    // setting some bits reads the old value, replaces them and writes it back
+    loc.check_modify()?;
+
     match it.next() {
         Some(Common(tk)) if tk.kind == Sign => {}
         _ => return Err(EXPECTED_SLICE.into()),
@@ -139,9 +158,41 @@ fn assign_slice(
     }
 
     Ok(Node::Assign(Assign {
-        target: Target::RegSlice(reg.clone(), slice),
+        target: Target::RegSlice(loc.clone(), slice),
         ty: ty.clone(),
         value: Compiled::from_expr(Expr::Integer(value, ty.clone())),
+    }))
+}
+
+/// `reg[vreg, ymm0, 256, u32, 5] = x + 1;` / `+= 1` / `++`: a whole lane behaves like a
+/// variable of the lane's type. The lane is written as a read-modify-write of the vector.
+fn assign_lane(
+    loc: &Loc,
+    slice: Slice,
+    ty: &CarlaType,
+    syms: &mut Symbols,
+    it: &mut ContextIterator<'_>,
+) -> Result<Node, String> {
+    loc.check_modify()?;
+
+    // `RegSlice` can't be an operand, its readable twin (`.*`) can
+    let read = Expr::RegSliceGet(loc.clone(), slice, ty.clone());
+
+    let value = match it.next() {
+        Some(Common(tk)) => match &tk.kind {
+            Sign => expressions::assignment(&read, None, syms, it)?,
+            CompoundAssign(op) => expressions::assignment(&read, Some(bin_op(op)), syms, it)?,
+            Inc => expressions::step(&read, true, syms)?,
+            Dec => expressions::step(&read, false, syms)?,
+            _ => return Err(EXPECTED.into()),
+        },
+        _ => return Err(EXPECTED.into()),
+    };
+
+    Ok(Node::Assign(Assign {
+        target: Target::RegSlice(loc.clone(), slice),
+        ty: ty.clone(),
+        value,
     }))
 }
 
@@ -159,12 +210,21 @@ pub fn parse(
 
     let place = expressions::parse_place(token, syms, it)?;
 
-    if let Expr::RegSlice(reg, sl, ty) = &place {
-        return assign_slice(reg, *sl, ty, it);
+    match &place {
+        Expr::RegSlice(loc, sl, ty) | Expr::RegSliceGet(loc, sl, ty) => {
+            return if loc.is_whole_lane(sl) {
+                assign_lane(loc, *sl, ty, syms, it)
+            } else if matches!(place, Expr::RegSlice(..)) {
+                assign_slice(loc, *sl, ty, it)
+            } else {
+                Err(EXPECTED.into())
+            };
+        }
+        _ => {}
     }
 
     let (target, ty) = match &place {
-        Expr::Reg(reg, ty) => (Target::Reg(reg.clone()), ty.clone()),
+        Expr::Reg(loc, ty) => (Target::Reg(loc.clone()), ty.clone()),
         Expr::Var(name, ty) => (Target::Var(name.clone()), ty.clone()),
         Expr::Deref(ptr, ty) => (
             Target::Deref(Compiled::from_expr((**ptr).clone())),
@@ -180,12 +240,38 @@ pub fn parse(
         ));
     }
 
+    // only a whole location has an access mode to check here
+    let loc = match &target {
+        Target::Reg(l) => Some(l.clone()),
+        _ => None,
+    };
+
     let value = match it.next() {
         Some(Common(tk)) => match &tk.kind {
-            Sign => expressions::assignment(&place, None, syms, it)?,
-            CompoundAssign(op) => expressions::assignment(&place, Some(bin_op(op)), syms, it)?,
-            Inc => expressions::step(&place, true, syms)?,
-            Dec => expressions::step(&place, false, syms)?,
+            Sign => {
+                if let Some(l) = &loc {
+                    l.check_store()?;
+                }
+                expressions::assignment(&place, None, syms, it)?
+            }
+            CompoundAssign(op) => {
+                if let Some(l) = &loc {
+                    l.check_modify()?;
+                }
+                expressions::assignment(&place, Some(bin_op(op)), syms, it)?
+            }
+            Inc => {
+                if let Some(l) = &loc {
+                    l.check_modify()?;
+                }
+                expressions::step(&place, true, syms)?
+            }
+            Dec => {
+                if let Some(l) = &loc {
+                    l.check_modify()?;
+                }
+                expressions::step(&place, false, syms)?
+            }
             _ => return Err(EXPECTED.into()),
         },
         _ => return Err(EXPECTED.into()),
