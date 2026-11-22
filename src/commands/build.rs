@@ -1,4 +1,3 @@
-
 use std::{
     env,
     ffi::{CString, c_char},
@@ -13,17 +12,14 @@ use std::{
 use colorize::AnsiColor;
 
 use crate::{
-    cbinds,
-    cli::{Build::{Auto, Pattern}, BuildPattern, CLI, Command},
-    compiler::{
+    cbinds, cli::{Build::{Auto, Pattern}, BuildPattern, CLI, Command}, compiler::{
         charsert,
         codegen::Codegen,
         nesting,
         scanner::Scanner,
         symbols::Symbols,
         visitor,
-    },
-    utils::{
+    }, utils::{
         compiler_outputs::CompilerOutputs,
         sys,
         uuid,
@@ -36,6 +32,7 @@ unsafe extern "C" {
         target: *mut c_char,
         extensor: *mut c_char,
         sake: *mut c_char,
+        extra: *mut c_char,
     );
 }
 
@@ -55,7 +52,7 @@ pub fn morgana_worker_entry() -> bool {
         return false;
     }
 
-    if args.len() < 4 {
+    if args.len() < 7 {
         eprintln!("Invalid Morgana worker arguments.");
         std::process::exit(2);
     }
@@ -64,13 +61,15 @@ pub fn morgana_worker_entry() -> bool {
     let target = CString::new(args[3].as_str()).unwrap();
     let extensor = CString::new(args[4].as_str()).unwrap();
     let sake = CString::new(args[5].as_str()).unwrap();
+    let extra = CString::new(args[6].as_str()).unwrap();
 
     unsafe {
         __morgana_build(
             path.as_ptr() as *mut c_char,
             target.as_ptr() as *mut c_char,
             extensor.as_ptr() as *mut c_char,
-            sake.as_ptr() as *mut c_char
+            sake.as_ptr() as *mut c_char,
+            extra.as_ptr() as *mut c_char
         );
     }
 
@@ -83,6 +82,7 @@ impl Command {
             CompilerOutputs::fatal("Can't read the current directory.");
             unreachable!();
         };
+
 
         let target = current_dir.join("target");
 
@@ -108,7 +108,7 @@ impl Command {
             }
         }
 
-        let Command::Build(data) = self else {
+        let Command::Build(data, extras) = self else {
             unreachable!()
         };
 
@@ -229,6 +229,20 @@ impl Command {
                 );
             }
 
+            // Extra específico desta arch (`--extra-<arch_os>`).
+            // Builds `Auto` também aceitam `--extra-auto`.
+            let extra = extras
+                .get(&arch_os)
+                .or_else(|| {
+                    if matches!(build, Auto) {
+                        extras.get("auto")
+                    } else {
+                        None
+                    }
+                })
+                .cloned()
+                .unwrap_or_default();
+
             let owner = arch_os.clone();
             let worker = executable.clone();
             let build_target = build_target.clone();
@@ -250,6 +264,7 @@ impl Command {
                     .arg(&build_target)
                     .arg(&owner)
                     .arg(&sake)
+                    .arg(&extra)
                     .output();
 
                 let _ = fs::remove_file(&morgana_temp);

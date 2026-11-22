@@ -10,8 +10,8 @@ impl Command {
     pub fn run_command(&self, params: &CLI) {
         match params.command {
             Command::Version => self.version(params),
-            Command::Upload(_, _, _) => self.upload(params),
-            Command::Build(_) => self.build(params),
+            Command::Upload(_, _, _, _) => self.upload(params),
+            Command::Build(_, _) => self.build(params),
             _ => {}
         }
         process::exit(0)

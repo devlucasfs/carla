@@ -8,6 +8,8 @@ main: "src/main.crl"
 constexpr: "core/constexpr.lua"
 
 builds: [
+    "xtensa_lx7",
+    "avr_atmega328p",
     "auto"
 ]
 

@@ -1,4 +1,4 @@
-last_change: "1794976844.+843671563"
+last_change: "1795329759.+308509967"
 
 @314412181
 target: { arch: "x86_64" os: "linux" }
@@ -12,3 +12,10 @@ tools: [ "avr-gcc", "package", "avr-objdump", "package", "avrdude", "package" ]
 compiling: "avr-gcc -nostartfiles -mmcu=atmega328p -Wall -Os -o $elf $file && avr-objcopy -O ihex -R .eeprom $elf $hex"
 linking: ""
 upload: "sudo avrdude -F -V -c arduino -p m328p -P $device -b $baudrate -U flash:w:$hex:i"
+
+@3986002071
+target: { arch: "xtensa_lx7" os: "none" }
+tools: [ "idf.py", "package", "esptool", "package" ]
+compiling: "t=$(realpath $target); f=$(realpath $file); cd $t && ([ -d carla-idf ] || idf.py create-project carla-idf) && cd carla-idf && mkdir -p src main && cp $f src/main.S && echo 'idf_component_register(SRCS ../src/main.S INCLUDE_DIRS .)' > main/CMakeLists.txt && echo 'cmake_minimum_required(VERSION 3.16)' > CMakeLists.txt && echo 'include($ENV{IDF_PATH}/tools/cmake/project.cmake)' >> CMakeLists.txt && echo 'project(carla-idf)' >> CMakeLists.txt && idf.py set-target $extra && idf.py build"
+linking: ""
+upload: "cd $idf && idf.py -p /dev/ttyUSB0 flash"

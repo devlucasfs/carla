@@ -1,5 +1,5 @@
 use crate::utils::eva::{Eva, EvaValue};
-use std::env;
+use std::{collections::HashMap, env};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BRData {
@@ -12,8 +12,8 @@ pub struct BRData {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Command {
     Version,
-    Upload(String, String, String),
-    Build(BRData),
+    Upload(String, String, String, String),
+    Build(BRData, HashMap<String, String>),
     Run(BRData),
 
     #[default]
@@ -126,15 +126,17 @@ impl CLI {
 
                 let mut device   = String::from(UPLOAD_DEVICE);
                 let mut baudrate = String::from("115200");
+                let mut mcu      = String::new();
                 let     target   = args.remove(0);
 
                 while args.len() > 0 {
                     let arg = args.remove(0);
-                    let flags = ["--device", "--baudrate"];
+                    let flags = ["--device", "--baudrate", "--mcu"];
 
                     match arg.as_str() {
                         "--device" => device = args.get(0).unwrap_or(&UPLOAD_DEVICE.into()).clone(),
-                        "--baudrate" => baudrate = args.get(0).unwrap_or(&UPLOAD_DEVICE.into()).clone(),
+                        "--baudrate" => baudrate = args.get(0).unwrap_or(&"115200".into()).clone(),
+                        "--mcu" => mcu = args.get(0).unwrap_or(&"".into()).clone(),
                         _ => {}
                     }
 
@@ -145,7 +147,7 @@ impl CLI {
 
                 Self {
                     message: FatalCLIMessage::None,
-                    command: Command::Upload(target, device, baudrate),
+                    command: Command::Upload(target, device, baudrate, mcu),
                     ..Default::default()
                 }
             },
@@ -210,6 +212,27 @@ impl CLI {
                     }
                 }
 
+                let mut extras: HashMap<String, String> = HashMap::new();
+                let mut iter = args.into_iter();
+
+                while let Some(arg) = iter.next() {
+                    if let Some(key) = arg.strip_prefix("--extra-") {
+                        if key.is_empty() {
+                            return CLI::spawn_error(
+                                "Missing architecture after `--extra-`.",
+                            );
+                        }
+
+                        let Some(value) = iter.next() else {
+                            return CLI::spawn_error(
+                                &format!("Missing value for `--extra-{key}`."),
+                            );
+                        };
+
+                        extras.insert(key.to_string(), value);
+                    }
+                }
+
                 let data = BRData {
                     builds: patterns,
                     constexpr: constexpr,
@@ -220,7 +243,7 @@ impl CLI {
                 Self {
                     message: FatalCLIMessage::None,
                     command: if command == "build" {
-                        Command::Build(data)
+                        Command::Build(data, extras)
                     } else {
                         Command::Run(data)
                     },

@@ -15,8 +15,12 @@ pub enum MorganaType {
 impl MorganaType {
     pub fn to_string(&self) -> String {
         match self {
-            MorganaType::Integer(bits) => format!("i{bits}"),
-            MorganaType::UInteger(bits) => format!("u{bits}"),
+            MorganaType::Integer(bits) if *bits != 0 => format!("i{bits}"),
+            MorganaType::UInteger(bits) if *bits != 0 => format!("u{bits}"),
+
+            MorganaType::Integer(_) => format!("int"),
+            MorganaType::UInteger(_) => format!("uint"),
+
             MorganaType::Void => "void".into(),
             MorganaType::Ptr => "ptr".into(),
             MorganaType::Tuple(types) => format!(

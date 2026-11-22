@@ -117,9 +117,9 @@ const EXPECTED: &str = "Expected `=`, a compound operator (`+=`...), `++` or `--
 const EXPECTED_SLICE: &str = "A `reg[KIND, .., lo..hi]` bit slice is set with `=` and a binary literal, e.g. `reg[reg, ax, 64, 0..3] = 0b01;` (compound operators, `++` and `--` aren't allowed on a bit slice; a whole SIMD lane is a value and accepts them)";
 
 /// A slice that covers exactly one SIMD lane is a value of the lane's type, not a bit field.
-fn is_whole_lane(loc: &Loc, slice: &Slice) -> bool {
-    matches!(&loc.lane, Some(lane) if slice.width == lane.ty.bits)
-}
+// fn is_whole_lane(loc: &Loc, slice: &Slice) -> bool {
+//     matches!(&loc.lane, Some(lane) if slice.width == lane.ty.bits)
+// }
 
 /// `reg[..., lo..hi] = 0b...;`: only `=` with a binary literal that fits in the slice.
 fn assign_slice(

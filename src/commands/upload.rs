@@ -9,6 +9,7 @@ unsafe extern "C" {
         extensor: *mut c_char,
         baudrate: *mut c_char,
         device: *mut c_char,
+        mcu: *mut c_char,
     );
 }
 
@@ -19,7 +20,7 @@ impl Command {
             unreachable!();
         };
 
-        let Command::Upload(extensor, device, baudrate) = &params.command else { unreachable!() };
+        let Command::Upload(extensor, device, baudrate, mcu) = &params.command else { unreachable!() };
 
         let target = current_dir.join("target").join(extensor);
 
@@ -41,6 +42,7 @@ impl Command {
         let extensor = CString::new(extensor.as_str()).unwrap();
         let baudrate = CString::new(baudrate.as_str()).unwrap();
         let device   = CString::new(device.as_str()).unwrap();
+        let mcu      = CString::new(mcu.as_str()).unwrap();
 
         unsafe {
             __morgana_upload(
@@ -49,6 +51,7 @@ impl Command {
                 extensor.as_ptr() as *mut c_char,
                 baudrate.as_ptr() as *mut c_char,
                 device.as_ptr() as *mut c_char,
+                mcu.as_ptr() as *mut c_char,
             );
         }
     }

@@ -1,12 +1,6 @@
 cargo build --release
 cd carla-env
-../target/release/rewrite build -useram
+../target/release/rewrite build --extra-xtensa_lx7 esp32
+../target/release/rewrite upload xtensa_lx7 --mcu esp32
 
-# echo
-# echo
-# echo "Uploading via Carla (./test.sh)"
-# echo
-# echo
-
-# ../target/debug/rewrite upload avr_atmega328p
 cd ..
