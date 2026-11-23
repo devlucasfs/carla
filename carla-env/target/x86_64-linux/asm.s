@@ -9,7 +9,7 @@ cycles_sleep:
 	movq %rdi, -8(%rbp)
 	xorl %eax, %eax
 	movq %rax, -16(%rbp)
-.L0_L9639cb7c7186:
+.L0_L9efcd000882e:
 	movq -16(%rbp), %rax
 	movq -8(%rbp), %rcx
 	cmpq %rcx, %rax
@@ -17,16 +17,16 @@ cycles_sleep:
 	movb %al, -17(%rbp)
 	movzbq -17(%rbp), %rax
 	testq %rax, %rax
-	jz .L0_L36cd038cd7a4
-.L0_Lf678643e2ba3:
+	jz .L0_Lae567dba6b08
+.L0_Lf0d06bb62e6e:
 	movq -16(%rbp), %rax
 	movq $1, %rcx
 	addq %rcx, %rax
 	movq %rax, -32(%rbp)
 	movq -32(%rbp), %rax
 	movq %rax, -16(%rbp)
-	jmp .L0_L9639cb7c7186
-.L0_L36cd038cd7a4:
+	jmp .L0_L9efcd000882e
+.L0_Lae567dba6b08:
 .set .LFRAME0, 32
 .LFE0:
 	leave
@@ -73,7 +73,7 @@ main:
 	movq $4, %rax
 	movabsq $1610629156, %rdx
 	movl %eax, (%rdx)
-.L2_L55e4fe4bcc28:
+.L2_L7016b192b4c1:
 	movq $4, %rax
 	movabsq $1610629128, %rdx
 	movl %eax, (%rdx)
@@ -86,8 +86,8 @@ main:
 	movq $10000, %rdi
 	xorl %eax, %eax
 	call cycles_sleep
-	jmp .L2_L55e4fe4bcc28
-.L2_Laece8b329703:
+	jmp .L2_L7016b192b4c1
+.L2_La187b7a3765a:
 .set .LFRAME2, 0
 .LFE2:
 	leave
