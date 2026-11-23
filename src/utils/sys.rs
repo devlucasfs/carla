@@ -1,4 +1,4 @@
-use crate::cli::{Build, BuildPattern};
+use crate::commands::build::{Build, BuildPattern};
 
 pub fn get(b: &Build) -> (String, String) {
     if let Build::Pattern(BuildPattern { arch, os }) = b {

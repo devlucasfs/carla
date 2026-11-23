@@ -1,22 +1,22 @@
-use crate::{cli::FatalCLIMessage, utils::compiler_outputs::CompilerOutputs};
+use crate::{commands::COMMANDS, utils::compiler_outputs::CompilerOutputs};
 
-pub mod cli;
 pub mod commands;
+pub mod terminal;
+pub mod versions;
 pub mod compiler;
 pub mod morgana;
-pub mod utils;
 pub mod cbinds;
+pub mod utils;
 
 fn main() {
     if crate::commands::build::morgana_worker_entry() {
         return;
     }
 
-    /* Collect and format all data */
-    let params = cli::CLI::build();
-    if let FatalCLIMessage::Message(msg) = &params.message {
-        CompilerOutputs::fatal(msg);
-    }
+    let args: Vec<_> = std::env::args().skip(1).collect();
+    let slice = args.as_slice();
 
-    params.command.run_command(&params);
+    if let Err(err) = terminal::parser::run(COMMANDS, slice) {
+        CompilerOutputs::fatal(err.to_string());
+    }
 }

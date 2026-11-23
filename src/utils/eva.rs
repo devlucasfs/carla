@@ -1,4 +1,5 @@
 use std::ffi::{CStr, CString, c_char, c_void};
+use std::fmt;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,6 +54,25 @@ pub enum EvaValue {
     Nil,
 }
 
+#[derive(Debug)]
+pub enum EvaOpenError {
+    NotFound(String),
+    InvalidPath(String),
+    Parser(usize),
+}
+
+impl fmt::Display for EvaOpenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound(p) => write!(f, "file `{p}` not found"),
+            Self::InvalidPath(p) => write!(f, "invalid path `{p}`"),
+            Self::Parser(s) => write!(f, "eva parser failed (status {s})"),
+        }
+    }
+}
+
+impl std::error::Error for EvaOpenError {}
+
 unsafe extern "C" {
     pub fn eva_make_parser(path: *const c_char) -> *mut EvaParser;
     pub fn eva_dump_pointer(value: EvaValueFFI);
@@ -88,6 +108,30 @@ impl Eva {
         let parser = unsafe { eva_make_parser(path.as_ptr()) };
 
         Self { parser }
+    }
+
+    pub fn try_open(path: &str) -> Result<Self, EvaOpenError> {
+        if !std::path::Path::new(path).is_file() {
+            return Err(EvaOpenError::NotFound(path.to_string()));
+        }
+        let c_path =
+            CString::new(path).map_err(|_| EvaOpenError::InvalidPath(path.to_string()))?;
+        let parser = unsafe { eva_make_parser(c_path.as_ptr()) };
+        if parser.is_null() {
+            return Err(EvaOpenError::Parser(usize::MAX));
+        }
+        let status = unsafe { (*parser).status };
+        if status != 0 {
+            return Err(EvaOpenError::Parser(status));
+        }
+        Ok(Self { parser })
+    }
+
+    pub fn has(&self, ns: &str, name: &str) -> bool {
+        if CString::new(ns).is_err() || CString::new(name).is_err() {
+            return false;
+        }
+        !matches!(self.get(ns, name), EvaValue::Nil)
     }
 
     pub(crate) fn convert_ffi(ffi: EvaValueFFI) -> EvaValue {

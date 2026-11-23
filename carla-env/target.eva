@@ -7,15 +7,22 @@ main: "src/main.crl"
 ' enabling or disabling the inclusion of specific blocks of code.
 constexpr: "core/constexpr.lua"
 
-builds: [
-    "xtensa_lx7",
-    "avr_atmega328p",
-    "auto"
-]
-
 ' You can use here to specify the output format.
 ' Is available: "native-bin", "static-archive" or "shared-object"
 output: { format: "native-bin" }
+
+' List all the targets you want to build your Carla program for.
+'
+' Each entry specifies a target platform and architecture to compile for.
+' For example, "avr_atmega328p" targets the ATmega328P microcontroller.
+'
+' Use "auto" to automatically detect the operating system and architecture
+' of the machine currently running the compiler, and build for that target.
+' This is useful when you simply want a native build for your current system.
+'
+' You can specify multiple targets to cross-compile the same codebase
+' for different platforms in a single build.
+builds: [ "auto" ]
 
 @precompiler
 ' Carla ships with a built-in precompiler that handles the
@@ -27,9 +34,3 @@ output: { format: "native-bin" }
 ' default extension, but you may replace it with any compatible
 ' implementation.
 name: "norn"
-
-@extensors
-' You can put more git repositories here.
-' Each repository will be checked when you try to install an extensor.
-' "git@github.com:Carla-repos/extensors.git" is the default (official) repository.
-repositories: [ "git@github.com:Carla-repos/extensors.git" ]
