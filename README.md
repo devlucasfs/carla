@@ -229,7 +229,7 @@ For Carla, Eva acts as the configuration layer between a workspace and the compi
 
 ## Build Orchestration
 
-### Samar and Sake
+### Sake
 
 [Samar](https://github.com/devlucasfs/samar) is a portable build language used by Carla through its project-level `Sake` file.
 
