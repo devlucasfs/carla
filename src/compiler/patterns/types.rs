@@ -27,6 +27,12 @@ pub struct Base {
     pub symbol: Symbol,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Variadic {
+    Typed(CarlaType),
+    Any,
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CarlaType {
     pub tuple: Vec<CarlaType>,
@@ -89,9 +95,6 @@ impl CarlaType {
         self.base.as_ref().map(|b| b.id.as_str())
     }
 
-    /// The elements of this type when it is a tuple, looking through aliases
-    /// (`using pair = |int, int|;` makes `pair` destructurable too).
-    /// Pointers (`levels > 0`) and arrays (`dim`) of a tuple are not tuples.
     pub fn tuple_items(&self) -> Option<&[CarlaType]> {
         if self.levels > 0 || !self.dim.is_empty() {
             return None;
@@ -172,6 +175,30 @@ impl CarlaType {
         t
     }
 
+    pub fn variadic_of(elem: &CarlaType, syms: &Symbols) -> Result<CarlaType, String> {
+        let count = Self::named("ulong", syms)
+            .ok_or("variadic parameters need the `ulong` type in scope")?;
+
+        Ok(CarlaType {
+            tuple: vec![count, elem.pointer_to()],
+            ..Default::default()
+        })
+    }
+
+    pub fn variadic_dyn(syms: &Symbols) -> Result<CarlaType, String> {
+        let count = Self::named("ulong", syms)
+            .ok_or("variadic parameters need the `ulong` type in scope")?;
+
+        let names = Self::named("string", syms)
+            .ok_or("`[]dyn` needs the `string` type in scope (import it)")?
+            .pointer_to();
+
+        Ok(CarlaType {
+            tuple: vec![count, names, Self::from_basic("generic_ptr")],
+            ..Default::default()
+        })
+    }
+
     pub fn to_morgana(&self) -> MorganaType {
         if self.levels > 0 {
             return MorganaType::Ptr;
@@ -213,10 +240,35 @@ pub fn work(
     parse_base(token, syms, iterator, true).map(Node::InternalType)
 }
 
-/// Reads `Abcd(.Child)*` without requiring every `.` to be a type:
-/// it stops right before a `.member` that isn't a type symbol, leaving the
-/// `.` in the iterator so the expressions parser can treat it as an extended
-/// function reference.
+pub fn parse_variadic(
+    syms: &mut Symbols,
+    iterator: &mut ContextIterator<'_>,
+) -> Result<Option<(Variadic, CarlaType)>, String> {
+    match iterator.peek() {
+        Some(Context::Block(Bracket, ctx)) if ctx.is_empty() => {}
+        _ => return Ok(None),
+    }
+
+    iterator.next();
+
+    let err = "Expected an element type after `[]` (e.g. `[]int` or `[]dyn`)";
+    let Some(Context::Common(token)) = iterator.next() else {
+        return Err(err.into());
+    };
+
+    if matches!(&token.kind, Identifier(id) if id == "dyn") {
+        return Ok(Some((Variadic::Any, CarlaType::variadic_dyn(syms)?)));
+    }
+
+    let Node::InternalType(elem) = work(token, syms, iterator)? else {
+        unreachable!()
+    };
+
+    let ty = CarlaType::variadic_of(&elem, syms)?;
+
+    Ok(Some((Variadic::Typed(elem), ty)))
+}
+
 pub fn parse_path(
     token: &Token,
     syms: &mut Symbols,
@@ -284,9 +336,6 @@ fn parse_tuple(syms: &mut Symbols, iterator: &mut ContextIterator<'_>) -> Result
     }))
 }
 
-/// `strict = true`: a `.member` that isn't a type symbol is an error
-/// (a `.` after a type is never valid anywhere else in a type context).
-/// `strict = false`: stop before that `.` and return the type read so far.
 fn parse_base(
     token: &Token,
     syms: &mut Symbols,
@@ -313,7 +362,6 @@ fn parse_base(
         ..Default::default()
     };
 
-    // Abcd.Efgh.Ijkl: every segment must be a type symbol
     while let Some(Context::Common(dot)) = iterator.peek() {
         if dot.kind != Dot {
             break;
@@ -348,7 +396,6 @@ fn parse_base(
                 ));
             }
             _ => {
-                // not a type: give the `.` back to the expressions parser
                 iterator.def(backup);
                 return Ok(ty);
             }

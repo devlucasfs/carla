@@ -1,28 +1,8 @@
-using pins = enum(
-    led = expr(1 << 2)
-);
-
-void cycles_sleep = fn(int cycles) {
-    for int i = 0; i <= cycles; i++ {}
-}
+const io  := @import("stdio");
 
 @_start
 int main = fn() {
-    let gpio2_out_sel := reg[mem, 0x6000455C, 32];
-    let iomux_gpio2   := reg[mem, 0x6000900C, 32];
-    let gpio_enable   := reg[mem, 0x60004024, 32];
-    let gpio_clear    := reg[mem, 0x6000400C, 32];
-    let gpio_set      := reg[mem, 0x60004008, 32];
-
-    iomux_gpio2   = 0x00001800;
-    gpio2_out_sel = 0x00000100;
-    gpio_enable   = pins.led;
-
-    while true {
-        gpio_set   = pins.led;
-        cycles_sleep(10000);
-
-        gpio_clear = pins.led;
-        cycles_sleep(10000);
-    }
+    let language := "Carla";
+    io.printf("Hello, World in %!\n", language);
+    0
 }

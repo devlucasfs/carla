@@ -1,0 +1,26 @@
+byte* alloc = fn(ulong size) {
+    constexpr(runa: os == Linux and arch == x86_64) {
+        let total := size + 8;
+        let addr  := syscall! 0x9(0, total, 3, 0x22, -1, 0) as ulong;
+        let base := addr as ulong*;
+        base[0] = total;
+        let user := addr + 8;
+        user as byte*
+    }
+}
+
+@outside down {
+    extend byte* {
+        void dump = fn(self) {
+            constexpr(runa: os == Linux and arch == x86_64) {
+                let raw  := self.* as ulong;
+                let addr := raw - 8;
+
+                let base := addr as ulong*;
+                let len  := base[0];
+
+                syscall! 0xb(addr, len);
+            }
+        }
+    }
+}

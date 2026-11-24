@@ -1,0 +1,71 @@
+@outside {
+    ..@import("strings");
+    ..@import("sys");
+}
+
+void print = fn(string msg) {
+    write(1, msg.as_cstr(), msg.len());
+}
+
+void println = fn(string msg) {
+    write(1, msg.as_cstr(), msg.len());
+    write(1, "\n", 1);
+}
+
+ulong read_until = fn(byte* buf, ulong cap, byte delim) {
+    ulong len = 0 as ulong;
+    byte c = 0 as byte;
+
+    if cap == 0 as ulong {
+        return 0 as ulong;
+    }
+
+    while len + 1 < cap {
+        int n = read(0, &c, 1);
+        if n <= 0 : break;
+        if c == delim : break;
+
+        buf[len] = c;
+        len = len + 1;
+    }
+
+    buf[len] = 0 as byte;
+    return len;
+}
+
+void print_until_mark = fn(string s, ulong* i) {
+    if var size, ptr := s; false {}
+    let start := i.*;
+    while i.* < size && ptr[i.*] != 37 && ptr[i.*] != 0 { i.*++; }
+    write(1, ptr + start, i.* - start);
+}
+
+void printf = fn(c_strz fmt, []dyn) {
+    if var size, types, raw := varargs; false {}
+    let s := fmt.to_string();
+    if var len, ptr := s; false {}
+
+    let arg := 0 as ulong;
+    let i   := 0 as ulong;
+
+    while i < len {
+        stdio.print_until_mark(s, &i);
+        if i >= len || ptr[i] == 0 : break;
+        i++;
+        if arg < size {
+            if strcmp_z(types[arg].as_cstr(), "string") == 0 {
+                let ppraw := raw as string**;
+                if var sz, p := ppraw[arg].*; false {}
+                write(1, p, sz);
+            }
+
+            if strcmp_z(types[arg].as_cstr(), "c_strz") == 0 {
+                let ppraw := raw as c_strz*;
+                if var sz, p := ppraw[arg].to_string(); false {}
+                write(1, p, sz);
+            }
+
+            arg++;
+        }
+    }
+}

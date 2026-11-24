@@ -1,0 +1,27 @@
+using string = |ulong, c_strz|;
+
+int strcmp_z = fn(c_strz a, c_strz b) {
+    ulong i = 0 as ulong;
+    while a[i] != 0 && a[i] == b[i] { i++; }
+    .(a[i] as int) - (b[i] as int)
+}
+
+extend c_strz {
+    string to_string = fn(self) {
+        let size := 0 as ulong;
+        while self.*[size] != 0 { size++; }
+        return size, self.*;
+    }
+}
+
+extend string {
+    ulong len = fn(self) {
+        if var sz, _ := self.*; false {}
+        sz
+    }
+
+    c_strz as_cstr = fn(self) {
+        if var _, ptr := self.*; false {}
+        ptr
+    }
+}

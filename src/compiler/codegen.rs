@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 
 use crate::{
@@ -11,7 +10,9 @@ use crate::{
             assign::{Assign, Target},
             binding::Binding,
             conditional::Conditional,
-            expressions::{BinOp, Compiled, Expr, Operand, Step, StepOp},
+            expressions::{
+                register_signature, BinOp, Compiled, Expr, Operand, Step, StepOp,
+            },
             r#extern::Extern,
             for_loop::ForLoop,
             incdec::IncDec,
@@ -113,11 +114,12 @@ fn encode_literal(s: &str) -> String {
         s.as_bytes().to_vec()
     };
 
-    let mut out = String::with_capacity(1 + bytes.len() * 2);
+    let mut out = String::with_capacity(3 + bytes.len() * 2);
     out.push('h');
     for b in bytes {
         out.push_str(&format!("{b:02x}"));
     }
+    out.push_str("00"); // terminador NUL
     out
 }
 
@@ -262,8 +264,10 @@ impl<'a> MorganaExpr<'a> {
                 (t, s.ty.clone())
             }
 
+            // A checagem de permissão de leitura (`check_load`) não é feita aqui:
+            // ela acontece em `Compiled::Lazy`, que sabe se esta leitura é apenas
+            // o vínculo de um `let x := reg[...]` (alias) ou uma leitura de verdade.
             StepOp::RegRead(r) => {
-                r.check_load()?;
                 let start = self.out.len();
                 let t = self.fresh();
 
@@ -276,7 +280,6 @@ impl<'a> MorganaExpr<'a> {
             }
 
             StepOp::RegSliceRead(r, slice) => {
-                r.check_load()?;
                 let start = self.out.len();
                 let t = self.fresh();
 
@@ -330,6 +333,50 @@ impl<'a> MorganaExpr<'a> {
                 self.line(morgana::ir_label(&skip));
 
                 (res, s.ty.clone())
+            }
+
+            // Monta uma tupla a partir dos operandos (usado pelos argumentos
+            // variádicos `[]T` / `[]any`, e por qualquer `Expr::Pack`).
+            StepOp::Pack(items) => {
+                let irty = s.ty.to_morgana();
+
+                let MorganaType::Tuple(expected) = &irty else {
+                    return Err(format!(
+                        "`{}` isn't a tuple type, so it can't be packed",
+                        s.ty.to_string()
+                    ));
+                };
+
+                if expected.len() != items.len() {
+                    return Err(format!(
+                        "packing {} value(s) into `{}`, which has {} element(s)",
+                        items.len(),
+                        s.ty.to_string(),
+                        expected.len()
+                    ));
+                }
+
+                let mut names = Vec::with_capacity(items.len());
+
+                for (i, (item, want)) in items.iter().zip(expected).enumerate() {
+                    let (v, ty) = self.value(item)?;
+
+                    if ty.to_morgana() != *want {
+                        return Err(format!(
+                            "tuple element {i}: found `{}`, but `{}` expects `{}`",
+                            ty.to_string(),
+                            s.ty.to_string(),
+                            want.to_string()
+                        ));
+                    }
+
+                    names.push(self.as_name(&v, &ty));
+                }
+
+                let t = self.fresh();
+                self.line(morgana::ir_pack(&t, &irty, &names));
+
+                (t, s.ty.clone())
             }
 
             _ => todo!(),
@@ -413,11 +460,32 @@ impl<'a> MorganaGenerator<Compiled> for MorganaExpr<'a> {
 
                 self.result_register = None;
 
+                // Não engole mais os erros dos steps: mostra a mensagem real
+                // em vez de deixar o temporário sem definir e cair no unwrap.
                 for step in &mut it {
-                    _ = self.step(&step);
+                    if let Err(e) = self.step(&step) {
+                        CompilerOutputs::fatal(e);
+                    }
                 }
 
-                if let Operand::Temp(id) = &result {
+                let result_id = match &result {
+                    Operand::Temp(id) => Some(id.clone()),
+                    _ => None,
+                };
+
+                // Toda leitura real de registrador precisa de permissão de load,
+                // exceto a que está sendo apenas vinculada por `let x := reg[...]`.
+                for (id, (r, _, _)) in self.register_steps.clone() {
+                    if self.allow_bind && Some(&id) == result_id.as_ref() {
+                        continue;
+                    }
+
+                    if let Err(e) = r.check_load() {
+                        CompilerOutputs::fatal(e);
+                    }
+                }
+
+                if let Some(id) = &result_id {
                     if let Some(location) = self.register_steps.get(id).cloned() {
                         self.result_register = Some(location);
                     }
@@ -476,6 +544,11 @@ impl Codegen {
                     }
 
                     self.nodes.remove(0);
+
+                    // Ensina o parser de chamadas como esta função recebe os
+                    // argumentos (quantos fixos + variádico), para que
+                    // `pack_variadic` empacote os extras na tupla.
+                    register_signature(&decl.identifier, &func.args);
 
                     let self_ty: Option<CarlaType> = if func.extension {
                         let Some(owner) = &self.extending else {
@@ -563,6 +636,10 @@ impl Codegen {
                         MorganaExpr::new(MorganaContext::Declaration, &mut s);
 
                     morg.registers = self.registers.clone();
+
+                    // Aqui o resultado é o alvo de um `let x := ...`: se for
+                    // `reg[...]`, é só um alias e não conta como leitura.
+                    morg.allow_bind = true;
 
                     let (result, ty) = morg.to_morgana(&expr.clone());
                     self.nodes.remove(0);
@@ -863,6 +940,8 @@ impl Codegen {
                     Extern::Variable(_, _) => todo!(),
 
                     Extern::Func(ret, params, identifier) => {
+                        register_signature(&identifier, &params);
+
                         let mut args = vec![];
 
                         for arg in &params {
@@ -882,6 +961,8 @@ impl Codegen {
 
                 (Unfoldable(decl), _) => match decl {
                     Unfold::Func(ret, params, identifier) => {
+                        register_signature(&identifier, &params);
+
                         let mut args = vec![];
 
                         for arg in &params {

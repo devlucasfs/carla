@@ -6,7 +6,7 @@ use crate::{
         patterns::{
             expressions::{self, Compiled},
             lambda::LambdaRunner::{Expr, Foward, Scope},
-            types::{self, CarlaType},
+            types::{self, CarlaType, Variadic},
         },
         scanner::{
             Keywords::Mut,
@@ -19,6 +19,11 @@ use crate::{
     utils::pbb,
 };
 
+/// Name given to a variadic parameter written without one (`fn(int n, []string)`).
+const DEFAULT_VARIADIC_NAME: &str = "varargs";
+
+const VARIADIC_LAST: &str = "The variadic parameter (`[]T`) must be the last one";
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum LambdaRunner {
     Scope(Vec<Context>),
@@ -30,6 +35,7 @@ pub enum LambdaRunner {
 pub struct Arg {
     pub ids: Vec<String>,
     pub ty: Box<CarlaType>,
+    pub variadic: Option<Variadic>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +46,12 @@ pub struct Lambda {
     pub mutable: bool,
     pub args: Vec<Arg>,
     pub run: LambdaRunner,
+}
+
+impl Lambda {
+    pub fn variadic(&self) -> Option<&Variadic> {
+        self.args.last().and_then(|a| a.variadic.as_ref())
+    }
 }
 
 fn is_self(ctx: &Context) -> bool {
@@ -90,7 +102,54 @@ pub fn parse_args(
     syms: &mut Symbols,
 ) -> Result<Vec<Arg>, String> {
     let mut args: Vec<Arg> = vec![];
-    while let Some(ctx) = iterator.next() {
+
+    loop {
+        if let Some((variadic, ty)) = types::parse_variadic(syms, iterator)? {
+            let id = match iterator.peek() {
+                None => DEFAULT_VARIADIC_NAME.to_string(),
+
+                Some(Common(tk)) if tk.kind == Comma => {
+                    return Err(VARIADIC_LAST.into());
+                }
+
+                Some(Common(tk)) => {
+                    let Identifier(id) = &tk.kind else {
+                        return Err(format!(
+                            "Expected the name of the variadic parameter but was found {:?}",
+                            tk.kind
+                        ));
+                    };
+
+                    let id = id.clone();
+                    iterator.next();
+                    id
+                }
+
+                Some(Block(used, _)) => {
+                    return Err(format!(
+                        "Expected the name of the variadic parameter but was found {}",
+                        pbb::become_block(used)
+                    ));
+                }
+            };
+
+            if iterator.remaining() != 0 {
+                return Err(VARIADIC_LAST.into());
+            }
+
+            args.push(Arg {
+                ids: vec![id],
+                ty: Box::from(ty),
+                variadic: Some(variadic),
+            });
+
+            break;
+        }
+
+        let Some(ctx) = iterator.next() else {
+            break;
+        };
+
         let Common(common) = ctx else {
             return Err("Context blocks are not allowed into argument blocks".into());
         };
@@ -136,6 +195,7 @@ pub fn parse_args(
         args.push(Arg {
             ids: vec![],
             ty: Box::from(internal),
+            variadic: None,
         });
     }
 

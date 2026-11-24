@@ -3,6 +3,7 @@ use crate::{
 };
 
 pub fn append(symbols: &mut Symbols) {
+    symbols.push_scope();
     symbols.push("void", BType(Void));
 
     symbols.push("generic_ptr", BType(Ptr));

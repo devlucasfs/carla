@@ -54,6 +54,7 @@ pub struct MorganaExpr<'a> {
     pub vals: HashMap<ExprId, (String, CarlaType)>,
     pub out: String,
     pub tmp: usize,
+    pub allow_bind: bool,
 }
 
 pub trait MorganaGenerator<T> {
@@ -71,6 +72,7 @@ impl<'a> MorganaExpr<'a> {
             registers: HashMap::new(),
             register_steps: HashMap::new(),
             result_register: None,
+            allow_bind: false
         }
     }
 }

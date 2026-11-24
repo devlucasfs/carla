@@ -1,4 +1,8 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use crate::{
     compiler::{
@@ -7,8 +11,9 @@ use crate::{
         nesting::Context::{self, Block, Common},
         node::Node::{self, Expression},
         patterns::{
+            lambda::Arg,
             reg::{self, Loc, Slice},
-            types::{self, Base, CarlaType},
+            types::{self, Base, CarlaType, Variadic},
         },
         scanner::{
             BinOP as Cmp,
@@ -37,6 +42,9 @@ const DEFAULT_CSTRZ: &str = "c_strz";
 const DEFAULT_SYSCALL_RET: &str = "int";
 const DEFAULT_FN_REF: &str = "fn_ref";
 const DEFAULT_VOID: &str = "void";
+const DEFAULT_COUNT: &str = "ulong";
+const DEFAULT_STRING: &str = "string";
+const DEFAULT_TO_STRING: &str = "to_string";
 
 const BARE_SLICE: &str = "a bit slice `reg[KIND, target, .., lo..hi]` isn't a value: set it with `= 0b...` or read it with `.*` (a whole SIMD lane, without a range, is a value and needs neither)";
 mod bp {
@@ -162,9 +170,8 @@ pub enum Expr {
     Reg(Loc, CarlaType),
     RegSlice(Loc, Slice, CarlaType),
     RegSliceGet(Loc, Slice, CarlaType),
-    /// `&temporary`: the value is materialized in a slot and the result is the slot's address.
-    /// It is only created by `value::f()`. Its type is always `T*`.
     TempRef(Box<Expr>, CarlaType),
+    Pack(Vec<Expr>, CarlaType),
 }
 
 impl Expr {
@@ -186,7 +193,8 @@ impl Expr {
             | Expr::Reg(_, t)
             | Expr::RegSlice(_, _, t)
             | Expr::RegSliceGet(_, _, t)
-            | Expr::TempRef(_, t) => t.clone(),
+            | Expr::TempRef(_, t)
+            | Expr::Pack(_, t) => t.clone(),
         }
     }
 
@@ -245,20 +253,15 @@ pub enum StepOp {
     Unary(UnOp, Operand),
     Binary(BinOp, Operand, Operand),
     Call(String, Vec<Operand>),
-    /// Call through an address (`fn_ref`): callee operand, then the arguments.
     CallIndirect(Operand, Vec<Operand>),
     Syscall(u64, Vec<Operand>),
     Cast(Operand, CarlaType),
     Deref(Operand),
-    /// Materializes the operand in a temporary slot (alive until the end of the statement)
-    /// and yields the slot's address. The operand may be an `Operand::Const`.
     AddrOfTemp(Operand),
-    /// Read of a location (reg, sreg, vreg, mem or io; the last two are volatile).
     RegRead(Loc),
-    /// Read of bits `lo..lo+width` of a location, shifted down, zero-extended.
-    /// For a vreg lane this is already the absolute bit range of the lane.
     RegSliceRead(Loc, Slice),
     Logical(BinOp, Operand, Vec<Step>, Operand),
+    Pack(Vec<Operand>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -375,6 +378,10 @@ fn lower(e: &Expr, out: &mut Vec<Step>) -> Operand {
             let a = lower(x, out);
             emit(out, t, StepOp::AddrOfTemp(a))
         }
+        Expr::Pack(items, t) => {
+            let a = lower_all(items, out);
+            emit(out, t, StepOp::Pack(a))
+        }
         Expr::Reg(r, t) => emit(out, t, StepOp::RegRead(r.clone())),
         Expr::RegSliceGet(r, s, t) => emit(out, t, StepOp::RegSliceRead(r.clone(), *s)),
         Expr::RegSlice(..) => unreachable!("a bare reg slice is rejected by the parser"),
@@ -428,11 +435,16 @@ fn is_int_ty(t: &CarlaType) -> bool {
     !is_ptr(t) && morgana_of(t).map_or(false, |m| is_int(&m))
 }
 
+fn is_signed_int(t: &CarlaType) -> bool {
+    !is_ptr(t) && matches!(morgana_of(t), Some(MorganaType::Integer(_)))
+}
+
 fn is_word(t: &CarlaType) -> bool {
     !is_ptr(t)
         && matches!(
             morgana_of(t),
-            Some(MorganaType::Integer(64)) | Some(MorganaType::UInteger(64))
+              Some(MorganaType::Integer(64)) | Some(MorganaType::UInteger(64))
+            | Some(MorganaType::Integer(0)) | Some(MorganaType::UInteger(0))
         )
 }
 
@@ -775,20 +787,31 @@ fn make_deref(x: Expr) -> Result<Expr, String> {
     Ok(Expr::Deref(Box::new(x), pointee))
 }
 
+/// Stride in bytes of one element of type `t`, used to scale `ptr + n` / `ptr - n` / `ptr[n]`.
+///
+/// It is exactly `sizeof(t)` (see `layout`), so it works for integers, pointers, tuples, aliases
+/// (`string`, ...) and arrays alike. A tuple's size is already rounded up to its own alignment,
+/// which is what makes consecutive elements line up (and match the `[]T` variadic lists).
 fn elem_size(t: &CarlaType) -> Result<i128, String> {
     if is_ptr(t) {
         return Ok(8);
     }
 
-    match morgana_of(t) {
-        Some(MorganaType::Integer(b)) | Some(MorganaType::UInteger(b)) if b > 0 && b % 8 == 0 => {
-            Ok((b / 8) as i128)
-        }
-        _ => Err(format!(
-            "pointer arithmetic over `{}` isn't supported yet (only integers and pointers)",
+    let (size, _) = layout(t).map_err(|e| {
+        format!(
+            "pointer arithmetic over `{}` isn't possible: {e}",
             t.to_string()
-        )),
+        )
+    })?;
+
+    if size == 0 {
+        return Err(format!(
+            "pointer arithmetic over `{}` isn't possible: its size is 0",
+            t.to_string()
+        ));
     }
+
+    Ok(size)
 }
 
 fn make_ptr_offset(op: BinOp, ptr: Expr, off: Expr, syms: &Symbols) -> Result<Expr, String> {
@@ -994,6 +1017,242 @@ fn int_literal(v: i128, syms: &Symbols) -> Result<Expr, String> {
     Ok(Expr::Integer(v, ty))
 }
 
+// ---------------------------------------------------------------------------------------------
+// Variadic calls
+//
+// A function whose last parameter is `[]T` / `[]any` takes any number (zero included) of extra
+// arguments. At the call site they are packed into the tuple the parameter really is:
+//
+//   []T    ->  |ulong, T*|                       count, pointer to the list of T
+//   []any  ->  |ulong, string*, generic_ptr|     count, pointer to the type names, pointer to
+//                                                the values
+//
+// Everything lives on the CALLER's stack (a temporary slot that lasts until the end of the
+// statement), so nothing is allocated and nothing has to be freed.
+//
+// Layout of the lists:
+//   * `[]T`:   n values of `T`, one after the other (stride = sizeof(T)).
+//   * `[]any`: n `string`s with the type name of each value (`int`, `byte*`, `string`, ...) and
+//              n slots of 8 bytes, one per value, in the same order. A pointer or a 64-bit
+//              integer is stored as it is, a smaller integer is widened to 64 bits (sign- or
+//              zero-extended by its own signedness) and anything bigger (a `string`, a tuple)
+//              is stored as a POINTER to a copy of it. So `list[i]` is at `8 * i`.
+// ---------------------------------------------------------------------------------------------
+
+thread_local! {
+    /// function name (the same one pushed into `Symbols`) -> (fixed parameters, variadic kind)
+    static VARIADICS: RefCell<HashMap<String, (usize, Variadic)>> = RefCell::new(HashMap::new());
+}
+
+/// Tells the call parser how the function `name` takes its arguments.
+///
+/// Call it where a function is declared, with the same `name` it pushes into `Symbols`
+/// (the mangled `abi::extension_symbol(..)` name for extended functions) and its parsed
+/// parameters: `register_signature(&name, &lambda.args)`. A function without a variadic
+/// parameter clears any previous entry, so calling it for every function is fine.
+pub fn register_signature(name: &str, params: &[Arg]) {
+    let variadic = params.last().and_then(|a| a.variadic.clone());
+    let fixed: usize = params
+        .iter()
+        .filter(|a| a.variadic.is_none())
+        .map(|a| a.ids.len())
+        .sum();
+
+    VARIADICS.with(|v| {
+        let mut v = v.borrow_mut();
+        match variadic {
+            Some(kind) => {
+                v.insert(name.to_string(), (fixed, kind));
+            }
+            None => {
+                v.remove(name);
+            }
+        }
+    });
+}
+
+fn variadic_signature(name: &str) -> Option<(usize, Variadic)> {
+    VARIADICS.with(|v| v.borrow().get(name).cloned())
+}
+
+fn tuple_of(items: Vec<CarlaType>) -> CarlaType {
+    CarlaType {
+        tuple: items,
+        ..Default::default()
+    }
+}
+
+fn count_of(n: usize, syms: &Symbols) -> Result<Expr, String> {
+    Ok(Expr::Integer(n as i128, builtin(syms, DEFAULT_COUNT)?))
+}
+
+/// Packs `items` (a tuple of type `list_ty`) into a stack slot and yields its address.
+fn stack_list(items: Vec<Expr>, list_ty: CarlaType, ptr_ty: CarlaType) -> Expr {
+    Expr::TempRef(Box::new(Expr::Pack(items, list_ty)), ptr_ty)
+}
+
+/// The extra arguments of a call to a variadic function become its last argument.
+/// Functions that aren't variadic are left alone.
+fn pack_variadic(syms: &Symbols, id: &str, mut args: Vec<Expr>) -> Result<Vec<Expr>, String> {
+    let Some((fixed, kind)) = variadic_signature(id) else {
+        return Ok(args);
+    };
+
+    if args.len() < fixed {
+        return Err(format!(
+            "`{id}` takes at least {fixed} argument(s) before its variadic part, found {}",
+            args.len()
+        ));
+    }
+
+    let extra = args.split_off(fixed);
+
+    let packed = match kind {
+        Variadic::Typed(elem) => pack_typed(syms, id, &elem, extra)?,
+        Variadic::Any => pack_any(syms, id, extra)?,
+    };
+
+    args.push(packed);
+    Ok(args)
+}
+
+/// `[]T`: every extra argument has to be exactly a `T` (same rule as an assignment: integer
+/// literals adapt to `T`, `nil` goes into a pointer, anything else needs `as`).
+fn pack_typed(
+    syms: &Symbols,
+    id: &str,
+    elem: &CarlaType,
+    extra: Vec<Expr>,
+) -> Result<Expr, String> {
+    if !elem.dim.is_empty() || is_void(elem) {
+        return Err(format!(
+            "`{id}`: `[]{}` isn't a valid variadic parameter (the element can't be `void` or an array)",
+            elem.to_string()
+        ));
+    }
+
+    let header = CarlaType::variadic_of(elem, syms)?;
+    let n = extra.len();
+
+    let mut items = Vec::with_capacity(n);
+    for (i, value) in extra.into_iter().enumerate() {
+        let value = adapt(value, elem)?;
+
+        let nil_in_ptr = matches!(value, Expr::Nil) && is_ptr(elem);
+        let (want, got) = (elem.to_string(), value.ty().to_string());
+
+        if want != got && !nil_in_ptr {
+            return Err(format!(
+                "variadic argument {} of `{id}` must be a `{want}`, found `{got}` \
+                 (no implicit conversion; use `as`)",
+                i + 1
+            ));
+        }
+
+        items.push(value);
+    }
+
+    let list = if n == 0 {
+        Expr::Nil
+    } else {
+        stack_list(items, tuple_of(vec![elem.clone(); n]), elem.pointer_to())
+    };
+
+    Ok(Expr::Pack(vec![count_of(n, syms)?, list], header))
+}
+
+/// `[]any`: accepts every value, and remembers the type of each one by name.
+fn pack_any(syms: &Symbols, id: &str, extra: Vec<Expr>) -> Result<Expr, String> {
+    let header = CarlaType::variadic_dyn(syms)?;
+    let n = extra.len();
+
+    if n == 0 {
+        return Ok(Expr::Pack(
+            vec![count_of(0, syms)?, Expr::Nil, Expr::Nil],
+            header,
+        ));
+    }
+
+    let string_ty = builtin(syms, DEFAULT_STRING)?;
+
+    let mut names = Vec::with_capacity(n);
+    let mut slots = Vec::with_capacity(n);
+    let mut slot_tys = Vec::with_capacity(n);
+
+    for (i, value) in extra.into_iter().enumerate() {
+        if matches!(value, Expr::Nil) {
+            return Err(format!(
+                "variadic argument {} of `{id}` is a bare `nil`, which has no type for `[]any` \
+                 (cast it, e.g. `nil as byte*`)",
+                i + 1
+            ));
+        }
+
+        let ty = value.ty();
+        if is_void(&ty) || !ty.dim.is_empty() {
+            return Err(format!(
+                "variadic argument {} of `{id}` is a `{}`, which can't go in a `[]any`",
+                i + 1,
+                ty.to_string()
+            ));
+        }
+
+        names.push(type_name(syms, &ty)?);
+
+        let (slot, slot_ty) = any_slot(syms, value)?;
+        slots.push(slot);
+        slot_tys.push(slot_ty);
+    }
+
+    let names_list = stack_list(
+        names,
+        tuple_of(vec![string_ty.clone(); n]),
+        string_ty.pointer_to(),
+    );
+    let values_list = stack_list(slots, tuple_of(slot_tys), CarlaType::from_basic("generic_ptr"));
+
+    Ok(Expr::Pack(
+        vec![count_of(n, syms)?, names_list, values_list],
+        header,
+    ))
+}
+
+/// The 8-byte slot a value takes inside a `[]any` list (see the layout above).
+fn any_slot(syms: &Symbols, value: Expr) -> Result<(Expr, CarlaType), String> {
+    let ty = value.ty();
+
+    if is_ptr(&ty) || is_word(&ty) {
+        return Ok((value, ty));
+    }
+
+    if is_int_ty(&ty) {
+        let wide = reg::int_type(syms, 64, is_signed_int(&ty))?;
+        return Ok((make_cast(value, wide.clone())?, wide));
+    }
+
+    let slot = ty.pointer_to();
+    Ok((Expr::TempRef(Box::new(value), slot.clone()), slot))
+}
+
+/// `"<type name>"::to_string()`: the `string` that names the type of a `[]any` value.
+fn type_name(syms: &Symbols, ty: &CarlaType) -> Result<Expr, String> {
+    let cstrz = builtin(syms, DEFAULT_CSTRZ)?;
+    let full = abi::extension_symbol(&cstrz, DEFAULT_TO_STRING);
+
+    let Some(sym) = syms.lookup(&full) else {
+        return Err(format!(
+            "`[]any` needs `{}.{DEFAULT_TO_STRING}` in scope to name the type of each argument \
+             (import the strings module)",
+            cstrz.to_string()
+        ));
+    };
+
+    let ret = symbol_ty(&full, sym)?;
+    let receiver = self_ref(Expr::String(ty.to_string(), cstrz), true)?;
+
+    Ok(Expr::Call(full, vec![receiver], ret))
+}
+
 pub fn starts_with(kind: &TokenKind) -> bool {
     matches!(
         kind,
@@ -1003,6 +1262,7 @@ pub fn starts_with(kind: &TokenKind) -> bool {
             | Keyword(RegOk)
             | Keyword(FnKw)
             | DoubleColon
+            | Dot
             | Bool(_)
             | BitOperator(AND)
             | Integer(_)
@@ -1233,6 +1493,11 @@ impl<'a, 'c> Parser<'a, 'c> {
 
             Identifier(id) => self.identifier(token, id),
 
+            Dot => match self.it.next() {
+                    Some(Block(Paren, inner)) => self.group(inner),
+                    _ => Err("Expected `(` after `.` at the start of an expression (e.g. `.(1 + 3) * 2`)".into()),
+            },
+
             _ => Err(format!(
                 "unsupported token in expression: {:?}",
                 token.kind
@@ -1386,7 +1651,9 @@ impl<'a, 'c> Parser<'a, 'c> {
         }
 
         let ret = symbol_ty(&full, sym)?;
-        let mut args = self.arguments(&full)?;
+        let args = self.arguments(&full)?;
+
+        let mut args = pack_variadic(self.syms, &full, args)?;
 
         if let Some(receiver) = receiver {
             args.insert(0, self_ref(receiver, by_temp)?);
@@ -1397,6 +1664,7 @@ impl<'a, 'c> Parser<'a, 'c> {
 
     fn call(&mut self, id: &str, ret: CarlaType) -> Result<Expr, String> {
         let args = self.arguments(id)?;
+        let args = pack_variadic(self.syms, id, args)?;
         Ok(Expr::Call(id.to_string(), args, ret))
     }
 
@@ -1596,6 +1864,7 @@ fn has_side_effects(e: &Expr) -> bool {
             has_side_effects(x)
         }
         Expr::Binary(_, l, r, _) => has_side_effects(l) || has_side_effects(r),
+        Expr::Pack(items, _) => items.iter().any(has_side_effects),
         _ => false,
     }
 }
