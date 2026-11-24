@@ -1,3 +1,6 @@
+<img align="right" src="./assets/icon.png" alt="Carla Logo" width="120px" height="120px">
+<br><br>
+
 # Carla
 
 **Carla** is a complete, embeddable, multi-paradigm systems programming language with extensible code generation.
