@@ -5,29 +5,65 @@
 
 **Carla** is a complete, embeddable, multi-paradigm systems programming language with extensible code generation.
 
-It combines low-level control with deliberate, explicit syntax and a lightweight abstraction model. Carla is designed to be deeply integrable into external systems while remaining adaptable across architectures and execution environments — without losing its identity.
+It combines low-level control with deliberate, explicit syntax and a lightweight abstraction model. Carla is designed to be deeply integrable into external systems while remaining adaptable across architectures and execution environments, without losing its identity.
 
-### Syntax & Abstraction
+> [!WARNING]
+> **Carla is in alpha.** The project is still under development. Everything described in this README will be part of the final result, but not all of it is implemented yet. Expect:
+>
+> - many `TODO`s throughout the code;
+> - debug messages written in **Portuguese** in some places;
+> - breaking changes between versions.
+
+## Installation
+
+To install Carla, we recommend downloading it from the official website:
+
+**[carla-lang.vercel.app/downloads](https://carla-lang.vercel.app/downloads)**
+
+## Hello, World!
+
+A minimal Carla program looks like this:
+
+```carla
+const io := @import("stdio");
+
+@_start
+int main = fn() {
+    let language := "Carla";
+    io.printf("Hello, World in %!\n", language);
+    0
+}
+```
+
+This small example introduces namespace imports, the entry-point declaration, local variables and standard I/O.
+
+The `@_start` directive is not a decorator or a macro. It is a more convenient representation of:
+
+```carla
+..@import("entry");
+```
+
+## Syntax & Abstraction
 
 Carla prioritizes **explicitness** and **predictability**:
 
-- Keywords have a single, unambiguous meaning
-- Data grouping is done through **tuples** instead of traditional structs
-- Behavior can be attached to types via `extend`
-- Compile-time evaluation (`constexpr`) allows target-specific code selection
-- Direct control over memory, syscalls and hardware is first-class
+- Keywords have a single, unambiguous meaning.
+- Data grouping is done through **tuples** instead of traditional structs.
+- Behavior can be attached to types via `extend`.
+- Compile-time evaluation (`constexpr`) allows target-specific code selection.
+- Direct control over memory, syscalls and hardware is first-class.
 
 The language sits at a **systems programming** level of abstraction: close enough to the metal for manual memory management and architecture-specific code, yet structured enough to support higher-level organization when desired.
 
 ### Multi-paradigm by design
 
-Carla natively supports:
+Carla natively supports three paradigms, which can be used separately or combined:
 
-- **Procedural** programming
-- **Object-Oriented Programming (OOP)**
-- **Data-Oriented Design (DOD)**
+- **Procedural:** direct control over execution and explicit operations.
+- **Object-Oriented Programming (OOP):** encapsulation, instance-oriented design and organization of behavior around data.
+- **Data-Oriented Design (DOD):** explicit data organization, predictable memory layouts and attention to how data is accessed and processed.
 
-These can be used separately or combined. A common and intentional pattern is to use **OOP on top of DOD** — defining data as tuples and then extending them with methods:
+A common and intentional pattern is **OOP on top of DOD**: define data as tuples, then extend them with methods.
 
 ```carla
 using Person = |int, string|;
@@ -46,130 +82,67 @@ extend Person {
 @_start
 int main = fn() {
     let p := Person.make(14, "Lucas");
-    p.show_name();          -- Lucas
-    Person.show_name(&p);
+    p.show_name(); -- Lucas
+    Person.show_name(&p); -- Lucas
 }
 ```
 
-This approach keeps data layout explicit and predictable (DOD) while still allowing method-style organization (OOP) when it improves clarity.
-
----
-
-## Hello, World!
-
-A minimal Carla program looks like this:
-
-```carla
-const io := @import("stdio");
-
-@_start
-int main = fn() {
-    let language := "Carla";
-    io.printf("Hello, World in %!\n", language);
-    0
-}
-```
-
-This small example introduces Carla's namespace imports, entry-point declaration, local variables, and standard I/O.
-
-## What is Carla's objective?
-
-Carla is designed to provide:
-
-- A complete programming language with its own ecosystem.
-- A straightforward embedding interface for external applications and systems.
-- Flexible integration with different architectures, runtimes, and execution environments.
-- An extensible compilation and code generation architecture.
-- A project-oriented configuration and build workflow.
-- A lightweight foundation suitable for both general-purpose systems and low-level development.
-
-Carla aims to be more than a language that can be embedded. It is intended to be a language that can be **deeply integrated, extended, and adapted without losing its identity**.
+This keeps data layout explicit and predictable (DOD) while still allowing method-style organization (OOP) when it improves clarity.
 
 ## Design Philosophy
 
-Carla follows a set of deliberate design principles that influence its syntax, semantics, memory model, and compiler architecture.
-
-These principles are not universal rules for programming languages. Some reflect the developer's own preferences, with the goal of creating a language that is consistent, predictable, and enjoyable to work with.
-
-### Multi-paradigm programming
-
-Carla accommodates different programming paradigms without forcing the developer into a single programming style.
-
-The language is designed to work with principles commonly associated with:
-
-- **Object-Oriented Programming (OOP):** Encapsulation, instance-oriented design, and organization of behavior around data.
-- **Data-Oriented Design (DOD):** Explicit data organization, predictable memory layouts, and consideration of how data is accessed and processed.
-- **Procedural programming:** Direct control over execution and explicit operations.
-
-These paradigms are not treated as mutually exclusive. Carla aims to provide the flexibility to combine them according to the requirements of the application.
+Carla follows a set of deliberate design principles that influence its syntax, semantics, memory model and compiler architecture. These are not universal rules for programming languages. Some reflect the developer's own preferences, with the goal of creating a language that is consistent, predictable and enjoyable to work with.
 
 ### No runtime global variables
 
-Carla intentionally avoids runtime global variables.
+Carla intentionally avoids runtime global variables. Runtime state should belong to an explicit instance or execution context rather than being implicitly shared across the whole program.
 
-Runtime state should belong to an explicit instance or execution context rather than being implicitly shared across the entire program.
-
-Compile-time globals are an exception, since they belong to the compilation process rather than the runtime execution model.
+Compile-time globals are an exception, since they belong to the compilation process rather than the runtime execution model:
 
 ```carla
 const kilobyte := 1024;
 ```
 
-This distinction separates compile-time configuration and computation from runtime state.
+This separates compile-time configuration and computation from runtime state.
 
 ### Instance-bound data by default
 
-Data in Carla is designed to be associated with an instance by default.
-
-This encourages explicit ownership and reduces reliance on implicit shared state. Instead of treating data as something that exists independently of its context, Carla encourages developers to organize it around the instances and execution contexts that use it.
+Data is associated with an instance by default. This encourages explicit ownership and reduces reliance on implicit shared state: instead of data that exists independently of its context, Carla encourages organizing it around the instances and execution contexts that use it.
 
 ### Tuples instead of structs
 
-Carla deliberately does not use traditional `struct` or `union` declarations.
-
-Instead, tuples are the fundamental mechanism for grouping data.
+Carla deliberately does not use `struct` or `union` declarations. Tuples are the fundamental mechanism for grouping data:
 
 ```carla
 using Person = |int, string|;
 ```
 
-Tuples provide a direct way to represent grouped values without introducing a separate structure declaration system.
-
-This is a conscious language-design decision, rather than an attempt to reproduce the traditional C type model.
+Tuples represent grouped values without a separate structure declaration system. This is a conscious language-design decision, not an attempt to reproduce the traditional C type model.
 
 ### Single-purpose keywords
 
-Carla follows a strict principle:
+**A keyword has one meaning.** Keywords are not overloaded with unrelated interpretations depending on context, which keeps the language explicit and easier to parse and reason about.
 
-**A keyword should have one meaning.**
+### Syntax as a deliberate choice
 
-Keywords should not be overloaded with unrelated semantic interpretations depending on context.
+Carla's syntax is shaped by its own goals rather than by the expectation that it should imitate an existing language. It prioritizes explicitness and consistency, clear distinctions between language constructs, explicit declarations and the avoidance of unnecessary ambiguity.
 
-This keeps the language explicit and makes its syntax easier to understand, parse, and reason about.
+## Goals
 
-### Syntax as a deliberate design choice
-
-Carla's syntax is shaped by its own design goals rather than by the expectation that it should imitate an existing language.
-
-It prioritizes:
-
-- Explicitness and consistency.
-- Clear distinctions between language constructs.
-- Avoidance of unnecessary syntactic ambiguity.
-- Semantically distinct keywords.
-- Explicit declarations.
+- A complete programming language with its own ecosystem.
+- A straightforward embedding interface for external applications and systems.
+- Flexible integration with different architectures, runtimes and execution environments.
+- An extensible compilation and code generation architecture.
+- A project-oriented configuration and build workflow.
+- A lightweight foundation suitable for both general-purpose systems and low-level development.
 
 ## Compiler Architecture
 
 ### Morgana
 
-[Morgana](https://github.com/devlucasfs/morgana) is Carla's machine-code generation backend.
+[Morgana](https://github.com/devlucasfs/morgana) is Carla's machine-code generation backend. It turns the compiler's target-specific representation into machine-level output and controls how Carla programs are lowered and generated for each architecture.
 
-Carla does not intend to rely on LLVM or QBE as mandatory intermediate compiler infrastructures. Instead, Morgana provides a more direct and adaptable relationship with the code generation process.
-
-For Carla, Morgana is responsible for turning the compiler's target-specific representation into machine-level output. It provides the foundation for controlling how Carla programs are lowered and generated for different architectures.
-
-This architecture allows Carla to:
+Carla does not intend to rely on LLVM or QBE as mandatory intermediate compiler infrastructures. Morgana offers a more direct and adaptable relationship with the code generation process. This allows Carla to:
 
 - Maintain control over its internal compilation model.
 - Implement target-specific code generation.
@@ -177,74 +150,49 @@ This architecture allows Carla to:
 - Extend support for architectures and instruction sets.
 - Accept direct community contributions to code generation.
 
-Morgana is not merely an implementation detail. It is a deliberate architectural choice that allows Carla to maintain control over its compilation process while keeping the backend open to extension.
+Morgana is designed to make new architectures, instruction sets and target-specific capabilities straightforward to integrate, without requiring the compiler architecture to be redesigned whenever a new target or capability is introduced.
 
-**See more here:** [Morgana repository](https://github.com/devlucasfs/morgana)
-
-### Extensible code generation
-
-Morgana is designed to make new architectures, instruction sets, and target-specific capabilities straightforward to integrate.
-
-The objective is to keep code generation adaptable to Carla's needs without requiring the entire compiler architecture to be redesigned whenever a new target or capability is introduced.
+> [!NOTE]
+> **Carla itself is not responsible for the number of architectures and operating systems that are supported. That is Morgana's responsibility.** Support for a new architecture or OS is added to Morgana, and Carla uses it through the backend. For the list of supported targets, see the [Morgana repository](https://github.com/devlucasfs/morgana).
 
 ## Compile-Time Environment
 
-Carla provides a compile-time environment that allows projects to define and evaluate information before the final program is generated.
-
-This environment is used for target selection, project-specific definitions, and other compilation decisions that should not become runtime state.
+Carla provides a compile-time environment that allows projects to define and evaluate information before the final program is generated. It is used for target selection, project-specific definitions and other compilation decisions that should not become runtime state.
 
 ### Runa
 
 [Runa](https://github.com/devlucasfs/runa) is a Lua-based runtime used by Carla to manage project-level compile-time definitions.
 
-Runa allows Carla's compilation process to inspect, read, modify, and generate definitions associated with the current project.
+Runa allows the compilation process to inspect, read, modify and generate definitions associated with the current project. This means project-specific language behavior and compilation configuration do not need to be hardcoded into the compiler: a workspace can define its own compile-time values and use them to influence compilation.
 
-For Carla, this means that project-specific language behavior and compilation configuration do not need to be hardcoded into the compiler itself. A workspace can define its own compile-time values and use them to influence compilation.
-
-Runa definitions are project-scoped, allowing different workspaces to customize their compilation environment without introducing unnecessary global runtime state.
-
-Runa provides the programmable side of Carla's compile-time environment, while Carla determines how those definitions affect the compilation process.
-
-**See more here:** [Runa repository](https://github.com/devlucasfs/runa)
+Runa definitions are project-scoped, so different workspaces can customize their compilation environment without introducing unnecessary global runtime state.
 
 ### Eva
 
-[Eva](https://github.com/carla-repos/eva) is Carla's declarative configuration language.
+[Eva](https://github.com/carla-repos/eva) is Carla's declarative configuration language. It represents structured project data through namespaces, nested values, lists, references and utility functions.
 
-It represents structured project data through namespaces, nested values, lists, references, and utility functions.
+Carla uses an Eva file named `target.eva` to describe project-level configuration, such as the selected architecture, operating system and other target settings.
 
-Carla uses an Eva file named `target.eva` to describe project-level configuration, including information such as the selected architecture, operating system, and other target settings.
-
-Eva is not limited to static key-value pairs. Its runtime interpretation allows configuration values to be resolved through functions and references.
-
-For example:
+Eva is not limited to static key-value pairs. Its runtime interpretation allows values to be resolved through functions and references. For example:
 
 ```eva
 @paths
 home: env("HOME")
 ```
 
-Here, `env()` resolves an environment variable and provides its value to the configuration.
-
-For Carla, Eva acts as the configuration layer between a workspace and the compilation tooling. It allows each project to describe its own environment without requiring those settings to become global language state.
-
-**See more here:** [Eva repository](https://github.com/carla-repos/eva)
+Here, `env()` resolves an environment variable and provides its value to the configuration. Eva acts as the configuration layer between a workspace and the compilation tooling, so each project can describe its own environment without turning those settings into global language state.
 
 ## Build Orchestration
 
-### Sake
+### Samar and the `Sake` file
 
 [Samar](https://github.com/devlucasfs/samar) is a portable build language used by Carla through its project-level `Sake` file.
 
-Sake describes the operations that Carla's build workflow should execute. Rather than hardcoding every build operation into Carla, projects can define their own dependencies, runners, conditions, and target-specific commands.
-
-For Carla, Samar provides the orchestration layer that connects the compiler and backend to the tools required by a target.
-
-This includes operations such as:
+`Sake` describes the operations that Carla's build workflow should execute. Rather than hardcoding every build operation into Carla, projects define their own dependencies, runners, conditions and target-specific commands. Samar is the orchestration layer that connects the compiler and backend to the tools a target requires. This includes:
 
 - Checking whether required tools are installed.
 - Declaring dependencies for specific architectures and operating systems.
-- Running assemblers, linkers, and other external tools.
+- Running assemblers, linkers and other external tools.
 - Defining build operations through runners.
 - Handling conditional build steps.
 - Overriding default SDK build behavior for individual projects.
@@ -287,17 +235,11 @@ runner binary {
 }
 ```
 
-This allows Carla projects to use existing toolchains without requiring a dedicated wrapper for every external command.
-
-Samar also supports conditional operations and project-level overrides. This makes it possible to maintain a shared build configuration while allowing each workspace to replace or extend the behavior it requires.
-
-**See more here:** [Samar repository](https://github.com/devlucasfs/samar)
+This lets Carla projects use existing toolchains without a dedicated wrapper for every external command. Samar also supports conditional operations and project-level overrides, so a shared build configuration can be maintained while each workspace replaces or extends the behavior it needs.
 
 ## Project Structure
 
-A Carla project is organized around a workspace containing its source code, project configuration, compile-time definitions, build description, and generated target artifacts.
-
-A typical workspace follows this structure:
+A Carla project is organized around a workspace containing its source code, project configuration, compile-time definitions, build description and generated target artifacts:
 
 ```text
 workspace/
@@ -310,8 +252,6 @@ workspace/
 └── Sake
 ```
 
-Each component has a specific responsibility:
-
 | Path | Purpose |
 | --- | --- |
 | `target/` | Stores generated artifacts and target-specific output. |
@@ -322,19 +262,11 @@ Each component has a specific responsibility:
 | `target.eva` | Defines the project's configuration through Eva. |
 | `Sake` | Defines the project's build operations through Samar. |
 
-This organization separates source code, configuration, build orchestration, and generated output.
-
 ## Compile-Time Evaluation
 
-Carla provides compile-time evaluation through `constexpr`.
+Carla provides compile-time evaluation through `constexpr`. The compiler evaluates conditions before generating the final code for a target, and, unlike runtime conditionals, these conditions can determine whether a particular implementation is included in the generated program at all.
 
-Compile-time expressions allow the compiler to evaluate conditions before generating the final code for a target.
-
-Unlike runtime conditionals, compile-time conditions can determine whether a particular implementation is included in the generated program.
-
-Carla uses Lua expressions through the `runa:` evaluator to describe certain compile-time conditions.
-
-For example:
+Conditions are written as Lua expressions through the `runa:` evaluator:
 
 ```carla
 int read = fn(int fd, byte* buf, uint size) {
@@ -345,13 +277,11 @@ int read = fn(int fd, byte* buf, uint size) {
 }
 ```
 
-In this example, the condition is evaluated during compilation. The compiler can determine whether the implementation applies to the selected operating system and architecture.
-
-This makes it possible to maintain target-specific implementations within the same source file without requiring the resulting program to contain every implementation.
+The condition is evaluated during compilation, and the compiler determines whether the implementation applies to the selected operating system and architecture. This makes it possible to keep target-specific implementations in the same source file without the resulting program containing every implementation.
 
 ### Compile-time code selection
 
-Compile-time conditions can select different implementations for different targets:
+Different implementations can be provided for different targets:
 
 ```carla
 constexpr(runa: arch == x86_64)
@@ -360,8 +290,6 @@ constexpr(runa: arch == x86_64)
 }
 ```
 
-A different implementation can be provided for another architecture:
-
 ```carla
 constexpr(runa: arch == ARM)
 {
@@ -369,39 +297,25 @@ constexpr(runa: arch == ARM)
 }
 ```
 
-These conditions describe compilation-time decisions rather than runtime branching.
-
-The selected code is determined by the target environment and the compile-time definitions available to the project.
+These are compilation-time decisions, not runtime branching. The selected code is determined by the target environment and the compile-time definitions available to the project.
 
 ### Project-defined compile-time definitions
 
-Carla uses Runa to provide project-level language definitions.
-
-These definitions are stored within the project's compile-time environment and can be read or written during compilation.
-
-The project's `core/constexpr.lua` file is part of this environment. It allows projects to define compile-time values and use them to influence compilation behavior, while keeping project-specific configuration separate from the runtime state of the resulting program.
+Carla uses Runa to provide project-level language definitions, which can be read or written during compilation. The project's `core/constexpr.lua` file is part of this environment: it lets projects define compile-time values and use them to influence compilation, while keeping project-specific configuration separate from the runtime state of the resulting program.
 
 ## Norn: Precompiler Integration
 
 Norn is Carla's default precompiler.
 
-Certain compiler operations, including `@outside` and `@import`, depend on Norn being available during compile time.
-
-These operations are not intended to function as ordinary runtime features. They require the precompiler to process the relevant source-level directives.
-
-Norn is integrated into Carla's compilation workflow so that source processing and import-related operations can be handled before the final code generation stage.
+Certain compiler operations, including `@outside` and `@import`, depend on Norn being available at compile time. They are not ordinary runtime features: they require the precompiler to process the relevant source-level directives before code generation.
 
 ### `@outside`
 
-The `@outside` directive is restricted to namespace-based imports.
-
-It is intended to operate on imported namespaces rather than arbitrary source files, keeping the operation tied to Carla's namespace-based import model.
+The `@outside` directive is restricted to namespace-based imports. It operates on imported namespaces rather than arbitrary source files, keeping the operation tied to Carla's namespace-based import model.
 
 ## Import System
 
-Carla provides two distinct import forms.
-
-They differ in how the imported code is incorporated into the current source file.
+Carla provides two distinct import forms, which differ in how the imported code is incorporated into the current source file.
 
 ### Namespace-based imports
 
@@ -409,11 +323,7 @@ They differ in how the imported code is incorporated into the current source fil
 const opa := @import("stdlib");
 ```
 
-This form imports a namespace and binds it to a local name.
-
-The imported namespace can then be accessed through the declared alias.
-
-Namespace-based imports are distinct from direct source inclusion.
+This form imports a namespace and binds it to a local name, through which the imported namespace is accessed.
 
 ### Direct imports
 
@@ -421,92 +331,35 @@ Namespace-based imports are distinct from direct source inclusion.
 ..@import("stdlib");
 ```
 
-This form behaves similarly to a C `#include`.
-
-Instead of introducing a namespace alias, the imported source is incorporated directly into the current compilation context.
-
-This distinction allows Carla to support both namespace-oriented code organization and direct source inclusion.
+This form behaves similarly to a C `#include`. Instead of introducing a namespace alias, the imported source is incorporated directly into the current compilation context.
 
 ### Import guards
 
-By default, imports are protected by `pragma once`, except for namespace-based imports.
+By default, imports are protected by `pragma once`, except for namespace-based imports. This prevents the same source file from being processed repeatedly through recursive or duplicated imports.
 
-This prevents the same source file from being processed repeatedly through recursive or duplicated imports.
-
-The behavior can be explicitly changed by placing the following directive on the first line of the imported file:
+To change this, place the following directive on the first line of the imported file:
 
 ```carla
 @pragma always
 ```
 
-With `always`, the file is allowed to be imported repeatedly.
-
-This provides an explicit way to control import behavior when repeated inclusion is required.
+With `always`, the file is allowed to be imported repeatedly, which gives explicit control over import behavior when repeated inclusion is required.
 
 ## Standard Library and Hardware Abstraction
 
-Carla's standard library is intentionally lightweight, following an approach closer to C than to languages with extensive built-in runtime ecosystems.
-
-The standard library aims to provide essential functionality without imposing a large runtime dependency on every Carla application.
-
-This is particularly important for Carla's goal of supporting environments ranging from general-purpose systems to low-level and resource-constrained architectures.
+Carla's standard library is intentionally lightweight, closer to C than to languages with extensive built-in runtime ecosystems. It provides essential functionality without imposing a large runtime dependency on every Carla application, which matters for environments ranging from general-purpose systems to low-level and resource-constrained architectures.
 
 ### Hardware Abstraction Layer (HAL)
 
-Carla intends to provide Hardware Abstraction Layer (HAL) implementations for its major supported architectures.
+Carla intends to provide Hardware Abstraction Layer (HAL) implementations for the architectures considered primary within its ecosystem. The HAL is designed to provide a common interface for architecture-specific hardware capabilities, while preserving the ability to access target-specific functionality when necessary.
 
-These implementations cover the architectures considered primary within the Carla ecosystem.
+Carla does not intend to maintain first-party HAL implementations for every possible architecture. For architectures outside the primary support scope, additional implementations will be available through community-maintained libraries.
 
-The HAL is designed to provide a common interface for interacting with architecture-specific hardware capabilities while preserving the ability to access target-specific functionality when necessary.
-
-Carla does not intend to maintain first-party HAL implementations for every possible architecture.
-
-For architectures outside the primary support scope, developers will be able to obtain additional implementations through community-maintained libraries.
-
-This keeps Carla's core ecosystem lightweight while allowing its hardware support to expand beyond the architectures maintained directly by the project.
-
-The standard library and HAL follow the same fundamental principle:
-
-**Keep the core minimal, provide essential implementations, and allow the ecosystem to expand through independent libraries.**
+The standard library and HAL follow the same principle: **keep the core minimal, provide essential implementations, and let the ecosystem expand through independent libraries.**
 
 ## Embedding and Integration
 
-Carla is intended to be embedded into a wide range of systems.
-
-Its embedding model aims to make integration straightforward without reducing the language to a limited scripting environment.
-
-The language should be adaptable to different hosts, architectures, and runtime configurations.
-
-This includes environments ranging from general-purpose applications to low-level and resource-constrained systems.
-
-The goal is to make Carla's integration capabilities flexible enough to accommodate the requirements of the host system, rather than requiring every host to conform to a single rigid execution model.
-
-## A Carla Program in Context
-
-The following example demonstrates how Carla is currently used to define a program entry point, import a namespace, and execute a simple operation through the standard I/O interface.
-
-```carla
-const io := @import("stdio");
-
-@_start
-int main = fn() {
-    let language := "Carla";
-    io.printf("Hello, World in %!\n", language);
-    0
-}
-```
-
-The program imports the `stdio` namespace, declares its entry point, and prints a message.
-
-The `@_start` directive is not a decorator or a macro. It is a more convenient representation of:
-
-```carla
-..@import("entry");
-```
-
-This provides a clearer way to express the program's entry-point setup while preserving Carla's direct import model.
-
-This example illustrates Carla's explicit import syntax, local declarations, and direct control over program initialization.
+Carla is intended to be embedded into a wide range of systems, from general-purpose applications to low-level and resource-constrained environments, without reducing the language to a limited scripting environment. Integration should be flexible enough to accommodate the requirements of the host system, instead of forcing every host to conform to a single rigid execution model.
 
 ## The Carla Ecosystem
 
@@ -515,14 +368,8 @@ Carla is built around a collection of components that work together to provide i
 | Component | Role in Carla |
 | --- | --- |
 | Carla | The programming language and its compilation model. |
-| Morgana | Machine-code generation and target-specific backend infrastructure. |
+| Morgana | Machine-code generation and target-specific backend. Defines which architectures and OSs are supported. |
 | Runa | Lua-based compile-time runtime and project-level definitions. |
 | Eva | Declarative project and target configuration. |
-| Sake | Build orchestration, dependencies, and external tool execution. |
+| Samar | Build orchestration, dependencies and external tool execution (via the `Sake` file). |
 | Norn | Precompiler integration and source-level directive processing. |
-
-Together, these components allow Carla to maintain control over its language, compilation process, and project environment while remaining extensible.
-
-Carla's objective is to provide a foundation that can scale across different execution environments — from general-purpose systems to low-level and embedded targets — without forcing every project to depend on the same rigid runtime or toolchain.
-
-**Carla is designed to keep the language in control of its own ecosystem, while allowing that ecosystem to grow through extensible tooling and community contributions.**
