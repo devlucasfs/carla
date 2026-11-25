@@ -33,7 +33,7 @@ These can be used separately or combined. A common and intentional pattern is to
 using Person = |int, string|;
 
 extend Person {
-    void make = fn(int age, cstr_z name) {
+    Person make = fn(int age, cstr_z name) {
         return age, name.to_string();
     }
 
