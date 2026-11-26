@@ -7,10 +7,6 @@ main: "src/main.crl"
 ' enabling or disabling the inclusion of specific blocks of code.
 constexpr: "core/constexpr.lua"
 
-' You can use here to specify the output format.
-' Is available: "native-bin", "static-archive" or "shared-object"
-output: { format: "native-bin" }
-
 ' List all the targets you want to build your Carla program for.
 '
 ' Each entry specifies a target platform and architecture to compile for.
@@ -22,7 +18,9 @@ output: { format: "native-bin" }
 '
 ' You can specify multiple targets to cross-compile the same codebase
 ' for different platforms in a single build.
-builds: [ "auto" ]
+artifacts: [
+    { target: "auto" outputs: [ "native-bin", "static-archive", "shared-object" ] }
+]
 
 @precompiler
 ' Carla ships with a built-in precompiler that handles the

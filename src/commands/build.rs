@@ -20,6 +20,7 @@ unsafe extern "C" {
         extensor: *mut c_char,
         sake: *mut c_char,
         extra: *mut c_char,
+        output: *mut c_char,
     );
 }
 
@@ -39,7 +40,7 @@ pub fn morgana_worker_entry() -> bool {
         return false;
     }
 
-    if args.len() < 7 {
+    if args.len() < 8 {
         eprintln!("Invalid Morgana worker arguments.");
         std::process::exit(2);
     }
@@ -49,6 +50,7 @@ pub fn morgana_worker_entry() -> bool {
     let extensor = CString::new(args[4].as_str()).unwrap();
     let sake = CString::new(args[5].as_str()).unwrap();
     let extra = CString::new(args[6].as_str()).unwrap();
+    let output = CString::new(args[7].as_str()).unwrap();
 
     unsafe {
         __morgana_build(
@@ -56,7 +58,8 @@ pub fn morgana_worker_entry() -> bool {
             target.as_ptr() as *mut c_char,
             extensor.as_ptr() as *mut c_char,
             sake.as_ptr() as *mut c_char,
-            extra.as_ptr() as *mut c_char
+            extra.as_ptr() as *mut c_char,
+            output.as_ptr() as *mut c_char,
         );
     }
 
@@ -99,35 +102,56 @@ fn pattern_from_string(s: String) -> Build {
     })
 }
 
-pub fn build_patterns(eva: &Eva) -> Result<Vec<Build>, String> {
-    let EvaValue::List(builds) = eva.get("target", "builds") else {
-        return Err("The `builds` field in the target.eva file need to be a list.".into());
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactBuild {
+    pub target: Build,
+    pub outputs: Vec<String>,
+}
+
+pub fn build_patterns(eva: &Eva) -> Result<Vec<ArtifactBuild>, String> {
+    let EvaValue::List(artifacts) = eva.get("target", "artifacts") else {
+        return Err("The `artifacts` field in target.eva must be a list.".into());
     };
 
     let mut patterns = Vec::new();
 
-    for i in 0..builds.len() {
-        match builds.get(i) {
-            EvaValue::String(s) if s.to_lowercase() == "auto" => patterns.push(Build::Auto),
-            EvaValue::String(s) => patterns.push(pattern_from_string(s)),
-            EvaValue::Map(map) => {
-                let EvaValue::String(os) = map.get("os") else {
-                    return Err(
-                        "The `os` field in the build pattern map need to be a string.".into(),
-                    );
-                };
+    for i in 0..artifacts.len() {
+        let EvaValue::Map(map) = artifacts.get(i) else {
+            return Err(format!("The {}th artifact entry must be a map.", i + 1));
+        };
 
-                let EvaValue::String(arch) = map.get("arch") else {
-                    return Err(
-                        "The `arch` field in the build pattern map need to be a string.".into(),
-                    );
-                };
+        let EvaValue::String(target) = map.get("target") else {
+            return Err(format!("The `target` field in artifact {} must be a string.", i + 1));
+        };
 
-                patterns.push(Build::Pattern(BuildPattern { arch, os }));
+        let target = if target.eq_ignore_ascii_case("auto") {
+            Build::Auto
+        } else {
+            pattern_from_string(target)
+        };
+
+        let EvaValue::List(outputs) = map.get("outputs") else {
+            return Err(format!("The `outputs` field in artifact {} must be a list.", i + 1));
+        };
+
+        let mut formats = Vec::new();
+        for j in 0..outputs.len() {
+            let EvaValue::String(output) = outputs.get(j) else {
+                return Err(format!("The {}th output in artifact {} must be a string.", j + 1, i + 1));
+            };
+
+            if !matches!(output.as_str(), "native-bin" | "static-archive" | "shared-object") {
+                return Err(format!("Unknown output format `{output}`."));
             }
 
-            _ => return Err(format!("the {}th argument its invalid.", i + 1)),
+            formats.push(output);
         }
+
+        if formats.is_empty() {
+            return Err(format!("Artifact {} has no output formats.", i + 1));
+        }
+
+        patterns.push(ArtifactBuild { target, outputs: formats });
     }
 
     Ok(patterns)
@@ -216,7 +240,7 @@ command_fn!(build(args) {
     let eva_f = current_dir.join("target.eva");
     let eva = &Eva::open(&eva_f.to_string_lossy());
 
-    let mut builds = match build_patterns(eva) {
+    let mut artifacts = match build_patterns(eva) {
         Ok(x) => x,
         Err(e) => {
             CompilerOutputs::fatal(e);
@@ -225,14 +249,23 @@ command_fn!(build(args) {
     };
 
     if let Some(target) = target {
-        builds.clear();
-        builds.push(pattern_from_string(target));
+        for artifact in &mut artifacts {
+            artifact.target = pattern_from_string(target.clone());
+        }
     }
 
+    let jobs: Vec<(Build, String)> = artifacts
+        .into_iter()
+        .flat_map(|artifact| {
+            artifact.outputs.into_iter()
+                .map(move |format| (artifact.target.clone(), format))
+        })
+        .collect();
+
     println!(
-        "{} Building for {} target(s)",
+        "{} Building {} artifact job(s)",
         "└─".b_grey(),
-        builds.len().to_string().b_yellow()
+        jobs.len().to_string().b_yellow()
     );
 
     let contexts = nesting::work(scanner.tokens);
@@ -246,14 +279,20 @@ command_fn!(build(args) {
     };
 
     let total_start = Instant::now();
-    let total = builds.len();
+    let total = jobs.len();
+
+    let output_width = jobs
+        .iter()
+        .map(|(_, output)| output.len())
+        .max()
+        .unwrap_or(0);
 
     let (tx, rx) = mpsc::channel::<(usize, BuildResult)>();
 
     let mut threads = Vec::new();
     let mut owners = Vec::new();
 
-    for (index, build) in builds.iter().enumerate() {
+    for (index, (build, output_format)) in jobs.iter().enumerate() {
         let mut symbols = Symbols::new();
         symbols.push_scope();
         charsert::append(&mut symbols);
@@ -290,7 +329,20 @@ command_fn!(build(args) {
             }
         };
 
-        let build_target = target_dir.join(&arch_os);
+        let target_name = arch_os.clone();
+
+        let padded_output = format!(
+            "{output_format:<output_width$}"
+        );
+
+        let owner = format!(
+            "{arch_os}  {}",
+            padded_output.b_cyan()
+        );
+
+        let build_target = target_dir
+            .join(&arch_os)
+            .join(output_format);
 
         if fs::create_dir_all(&build_target).is_err() {
             CompilerOutputs::fatal_internal(
@@ -311,19 +363,30 @@ command_fn!(build(args) {
             );
         }
 
-        let owner = arch_os.clone();
+        let owner = owner.clone();
+        let target_name = target_name.clone();
+        let output_format = output_format.clone();
         let worker = executable.clone();
         let build_target = build_target.clone();
         let sake = sake.clone();
 
         let extra = {
-            if let Some(m) = &mcu { m.clone() }
-            else { "".into() }
+            if let Some(m) = &mcu {
+                m.clone()
+            } else {
+                "".into()
+            }
         };
 
         owners.push(owner.clone());
 
-        println!("{} {}", "#".yellow().bold(), owner);
+        println!(
+            "{} {}  {}",
+            "#".yellow().bold(),
+            target_name.clone().b_grey().bold(),
+            output_format.clone().b_cyan()
+        );
+
         let _ = io::stdout().flush();
 
         let tx = tx.clone();
@@ -335,9 +398,10 @@ command_fn!(build(args) {
                 .arg("--morgana-worker")
                 .arg(&morgana_temp)
                 .arg(&build_target)
-                .arg(&owner)
+                .arg(&target_name)
                 .arg(&sake)
                 .arg(&extra)
+                .arg(&output_format)
                 .output();
 
             let _ = fs::remove_file(&morgana_temp);
@@ -397,14 +461,14 @@ command_fn!(build(args) {
 
         if result.success {
             print!(
-                "{} {} {}",
+                "{} {}  {}",
                 "✔️".b_green(),
                 result.owner,
                 format!("{:.3}s", result.elapsed).blue()
             );
         } else {
             print!(
-                "{} {} {}",
+                "{} {}  {}",
                 "x".b_red(),
                 result.owner,
                 format!("{:.3}s", result.elapsed).blue()
@@ -429,7 +493,9 @@ command_fn!(build(args) {
             print!("\x1b[s");
             print!("\x1b[{}A", total - index);
             print!("\r\x1b[2K");
+
             print!("{} {}", "x".b_red(), owner);
+
             print!("\x1b[u");
 
             let _ = io::stdout().flush();
@@ -494,6 +560,7 @@ command_fn!(build(args) {
         }
 
         println!();
+
         CompilerOutputs::fatal("One or more builds failed.");
     }
 });
