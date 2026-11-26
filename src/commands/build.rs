@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use crate::{command, command_fn, terminal::Command, versions::FIRST_RELEASE};
+use crate::{command, command_fn, terminal::Command, versions::FIRST_VERSION_EVER};
 
 use std::{
     env, ffi::{CString, c_char}, fs, process::Command as ProcessCommand, sync::mpsc, thread, time::Instant, io::{self, Write},
@@ -501,7 +501,7 @@ command_fn!(build(args) {
 pub const BUILD: Command = command! {
     name: "build",
     description: "Compile your project",
-    since: FIRST_RELEASE,
+    since: FIRST_VERSION_EVER,
     example: "carla build -t xtensa_lx7 -M esp32",
     flags: {
         Evaluated("constexpr", "C") => "Lua Defines file",

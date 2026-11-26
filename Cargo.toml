@@ -8,3 +8,4 @@ cc = "1"
 
 [dependencies]
 colorize = "0.1.0"
+libc = "0.2.191"

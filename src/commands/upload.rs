@@ -1,6 +1,6 @@
 use crate::utils::compiler_outputs::CompilerOutputs;
 #[allow(unused_imports)]
-use crate::{command, command_fn, terminal::Command, versions::FIRST_RELEASE};
+use crate::{command, command_fn, terminal::Command, versions::FIRST_VERSION_EVER};
 
 use std::{env, ffi::{CString, c_char}};
 
@@ -115,7 +115,7 @@ command_fn!(upload(args) {
 pub const UPLOAD: Command = command! {
     name: "upload",
     description: "Flash your program to your MCU",
-    since: FIRST_RELEASE,
+    since: FIRST_VERSION_EVER,
     example: "carla upload -t xtensa_lx7 -m esp32",
     flags: {
         Evaluated("baudrate", "b") => "MCU baudrate",

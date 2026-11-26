@@ -1,7 +1,7 @@
 use colorize::AnsiColor;
 
 #[allow(unused_imports)]
-use crate::{command, command_fn, terminal::{Command, Flag}, versions::FIRST_RELEASE};
+use crate::{command, command_fn, terminal::{Command, Flag}, versions::FIRST_VERSION_EVER};
 use crate::{commands::{COMMANDS, version}, terminal::tricks::{TRICK_MSG, TRICKS}};
 
 #[derive(Clone, Copy)]
@@ -92,7 +92,7 @@ command_fn!(help(args) {} => {
 pub const HELP: Command = command! {
     name: "help",
     description: "List all available commands",
-    since: FIRST_RELEASE,
+    since: FIRST_VERSION_EVER,
     example: "",
     flags: {},
     function: help,

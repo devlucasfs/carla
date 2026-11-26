@@ -1,0 +1,8 @@
+const io := @import("stdio");
+
+@_start
+int main = fn() {
+    let language := "Carla";
+    io.printf("Hello, World 100%% made in %!\n", language);
+    0
+}

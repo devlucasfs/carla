@@ -1,1 +1,1 @@
-pub const FIRST_RELEASE: &'static str = "26.0";
+pub const FIRST_VERSION_EVER: &'static str = "alpha-26.0";
