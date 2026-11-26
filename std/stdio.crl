@@ -36,7 +36,17 @@ ulong read_until = fn(byte* buf, ulong cap, byte delim) {
 void print_until_mark = fn(string s, ulong* i) {
     if var size, ptr := s; false {}
     let start := i.*;
-    while i.* < size && ptr[i.*] != 37 && ptr[i.*] != 0 { i.*++; }
+
+    while i.* < size && ptr[i.*] != 0 {
+        if ptr[i.*] == 37 {
+            if ptr[i.* + 1] != 37 : break;
+            write(1, ptr + start, i.* - start);
+            write(1, ptr + i.*, 1);
+            i.* += 2;
+            start = i.*;
+        } else { i.*++; }
+    }
+
     write(1, ptr + start, i.* - start);
 }
 
