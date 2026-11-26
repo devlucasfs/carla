@@ -21,7 +21,7 @@ pub enum ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoCommand => write!(f, ""),
+            Self::NoCommand => write!(f, "No command found. Try to use \"help\" to see which commands are available."),
             Self::UnknownCommand(c) => write!(f, "Unknown command: `{c}`; Check all commands using help!"),
             Self::UnknownFlag(x) => write!(f, "Unknown flag: `{x}`"),
             Self::MissingValue(x) => write!(f, "The flag `{x}` needs a value."),

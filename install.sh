@@ -264,7 +264,24 @@ install_norn() {
     clone_repo "$REPO_NORN" "norn" || return 1
 
     local dir="${TEMP_DIR}/norn"
-    if ! run_in "$dir" go build -o "${INSTALL_BIN}/norn" .; then
+
+    # The main package may not be at the repo root: pick the shallowest one
+    local main_file
+    main_file=$(grep -rl --include='*.go' '^package main' "$dir" 2>/dev/null \
+        | awk '{ print gsub("/","/") " " $0 }' | sort -n | head -1 | cut -d' ' -f2-)
+
+    if [ -z "$main_file" ]; then
+        error "No Go main package found in the Norn repository"
+        info "Repository contents:"
+        ls -la "$dir" >&2
+        return 1
+    fi
+
+    local main_dir
+    main_dir=$(dirname "$main_file")
+    info "Building Norn from: ${main_dir#"$dir"}"
+
+    if ! run_in "$main_dir" go build -o "${INSTALL_BIN}/norn" .; then
         error "Norn build failed - check log: $LOG_FILE"
         return 1
     fi

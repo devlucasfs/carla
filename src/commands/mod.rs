@@ -10,8 +10,8 @@ pub mod pkg;
 pub const COMMANDS: &[Command] = &[
     version::VERSION, help::HELP,
 
-    init::INIT, pkg::PKG,
-
     build::BUILD,
     upload::UPLOAD,
+
+    init::INIT, pkg::PKG,
 ];
