@@ -16,6 +16,10 @@ command_fn!(init(args) {} => {
     let eva_file_content = include_str!("../../default/target.eva");
     _ = fs::write(eva_file_path, eva_file_content);
 
+    let gitignore_file_path = cwd.join(".gitignore");
+    let gitignore_file_content = include_str!("../../default/default_gitignore");
+    _ = fs::write(gitignore_file_path, gitignore_file_content);
+
     let sake_file_path = cwd.join("Sake");
     let sake_file_content = include_str!("../../default/Sake");
     _ = fs::write(sake_file_path, sake_file_content);

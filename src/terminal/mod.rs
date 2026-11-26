@@ -1,6 +1,5 @@
 #[macro_use]
 pub mod macros;
-pub mod commands;
 pub mod parser;
 pub mod tricks;
 

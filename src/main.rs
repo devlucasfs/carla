@@ -1,5 +1,6 @@
 use crate::{commands::COMMANDS, utils::compiler_outputs::CompilerOutputs};
 
+pub mod package_manager;
 pub mod commands;
 pub mod terminal;
 pub mod versions;
