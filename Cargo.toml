@@ -1,6 +1,6 @@
 [package]
 name = "carla"
-version = "alpha-26.0"
+version = "1.26.0"
 edition = "2024"
 
 [build-dependencies]
