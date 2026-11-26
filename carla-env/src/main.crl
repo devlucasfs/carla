@@ -1,9 +1,6 @@
 const io  := @import("stdio");
 
-extern void message = fn();
-
 @_start
 int main = fn() {
     io.println("Hello, world! Trying to call the SO"::to_string());
-    message();
 }

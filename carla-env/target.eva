@@ -18,9 +18,7 @@ constexpr: "core/constexpr.lua"
 '
 ' You can specify multiple targets to cross-compile the same codebase
 ' for different platforms in a single build.
-artifacts: [
-    { target: "auto" outputs: [ "native-bin" ] libs: [ "shared:base-lib" ] }
-]
+artifacts: [ "auto" ]
 
 @precompiler
 ' Carla ships with a built-in precompiler that handles the
