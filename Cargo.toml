@@ -1,6 +1,6 @@
 [package]
-name = "rewrite"
-version = "0.1.0"
+name = "carla"
+version = "alpha-26.0"
 edition = "2024"
 
 [build-dependencies]
