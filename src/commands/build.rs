@@ -289,7 +289,7 @@ pub fn build_patterns(eva: &Eva) -> Result<Vec<ArtifactBuild>, String> {
 }
 
 command_fn!(build(args) {
-    mcu:           String = "extra-mcu",
+    mcu:           String = "mcu",
     target:        String = "target",
     constexpr:     String = "constexpr",
     entry:         String = "main",
