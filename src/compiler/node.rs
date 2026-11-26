@@ -4,6 +4,7 @@ use crate::compiler::patterns::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
+    Export,
     Assign(Assign),
     InternalType(CarlaType),
     Declaration(Variable),

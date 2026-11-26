@@ -21,6 +21,7 @@ unsafe extern "C" {
         sake: *mut c_char,
         extra: *mut c_char,
         output: *mut c_char,
+        libs: *mut c_char,
     );
 }
 
@@ -40,7 +41,7 @@ pub fn morgana_worker_entry() -> bool {
         return false;
     }
 
-    if args.len() < 8 {
+    if args.len() < 9 {
         eprintln!("Invalid Morgana worker arguments.");
         std::process::exit(2);
     }
@@ -51,6 +52,7 @@ pub fn morgana_worker_entry() -> bool {
     let sake = CString::new(args[5].as_str()).unwrap();
     let extra = CString::new(args[6].as_str()).unwrap();
     let output = CString::new(args[7].as_str()).unwrap();
+    let libs = CString::new(args[8].as_str()).unwrap();
 
     unsafe {
         __morgana_build(
@@ -60,6 +62,7 @@ pub fn morgana_worker_entry() -> bool {
             sake.as_ptr() as *mut c_char,
             extra.as_ptr() as *mut c_char,
             output.as_ptr() as *mut c_char,
+            libs.as_ptr() as *mut c_char,
         );
     }
 
@@ -102,10 +105,141 @@ fn pattern_from_string(s: String) -> Build {
     })
 }
 
+fn parse_target(s: String) -> Build {
+    if s.eq_ignore_ascii_case("auto") {
+        Build::Auto
+    } else {
+        pattern_from_string(s)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LibKind {
+    Shared,
+    Static,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lib {
+    pub kind: LibKind,
+    pub name: String,
+}
+
+impl Lib {
+    pub fn parse(s: &str) -> Result<Lib, String> {
+        let Some((kind, name)) = s.split_once(':') else {
+            return Err(format!("Invalid lib `{s}`: expected `<kind>:<name>`."));
+        };
+
+        let kind = match kind {
+            "shared" => LibKind::Shared,
+            "static" => LibKind::Static,
+            other => return Err(format!("Unknown lib kind `{other}` in `{s}`.")),
+        };
+
+        if name.is_empty() {
+            return Err(format!("Lib `{s}` has an empty name."));
+        }
+
+        Ok(Lib { kind, name: name.into() })
+    }
+
+    pub fn to_arg(&self) -> String {
+        let kind = match self.kind {
+            LibKind::Shared => "shared",
+            LibKind::Static => "static",
+        };
+        format!("{kind}:{}", self.name)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactBuild {
     pub target: Build,
     pub outputs: Vec<String>,
+    pub libs: Vec<Lib>,
+}
+
+fn default_outputs() -> Vec<String> {
+    vec!["native-bin".into()]
+}
+
+const OUTPUT_FORMATS: [&str; 3] = ["native-bin", "static-archive", "shared-object"];
+
+fn validate_output(output: &str) -> Result<(), String> {
+    if OUTPUT_FORMATS.contains(&output) {
+        Ok(())
+    } else {
+        Err(format!("Unknown output format `{output}`."))
+    }
+}
+
+fn parse_outputs(value: EvaValue, n: usize) -> Result<Vec<String>, String> {
+    let EvaValue::List(outputs) = value else {
+        return Err(format!("The `outputs` field in artifact {n} must be a list."));
+    };
+
+    let mut formats = Vec::new();
+    for j in 0..outputs.len() {
+        let EvaValue::String(output) = outputs.get(j) else {
+            return Err(format!("The {}th output in artifact {n} must be a string.", j + 1));
+        };
+
+        validate_output(&output)?;
+        formats.push(output);
+    }
+
+    if formats.is_empty() {
+        return Err(format!("Artifact {n} has no output formats."));
+    }
+
+    Ok(formats)
+}
+
+/// `native-bin,shared-object` -> ["native-bin", "shared-object"]
+fn parse_outputs_arg(s: &str) -> Result<Vec<String>, String> {
+    let formats: Vec<String> = s
+        .split(',')
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+        .map(String::from)
+        .collect();
+
+    if formats.is_empty() {
+        return Err("The `--output-format` flag has no output formats.".into());
+    }
+
+    for format in &formats {
+        validate_output(format)?;
+    }
+
+    Ok(formats)
+}
+
+fn parse_libs(value: EvaValue, n: usize) -> Result<Vec<Lib>, String> {
+    let EvaValue::List(libs) = value else {
+        return Err(format!("The `libs` field in artifact {n} must be a list."));
+    };
+
+    let mut out = Vec::new();
+    for j in 0..libs.len() {
+        let EvaValue::String(lib) = libs.get(j) else {
+            return Err(format!("The {}th lib in artifact {n} must be a string.", j + 1));
+        };
+
+        out.push(Lib::parse(&lib).map_err(|e| format!("Artifact {n}: {e}"))?);
+    }
+
+    Ok(out)
+}
+
+/// `shared:foo,static:bar` -> [Lib, Lib]. Empty string = no libs.
+fn parse_libs_arg(s: &str) -> Result<Vec<Lib>, String> {
+    s.split(',')
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(|l| Lib::parse(l).map_err(|e| format!("`--libs` flag: {e}")))
+        .collect()
 }
 
 pub fn build_patterns(eva: &Eva) -> Result<Vec<ArtifactBuild>, String> {
@@ -116,52 +250,51 @@ pub fn build_patterns(eva: &Eva) -> Result<Vec<ArtifactBuild>, String> {
     let mut patterns = Vec::new();
 
     for i in 0..artifacts.len() {
-        let EvaValue::Map(map) = artifacts.get(i) else {
-            return Err(format!("The {}th artifact entry must be a map.", i + 1));
-        };
+        let n = i + 1;
 
-        let EvaValue::String(target) = map.get("target") else {
-            return Err(format!("The `target` field in artifact {} must be a string.", i + 1));
-        };
+        let artifact = match artifacts.get(i) {
+            EvaValue::String(target) => ArtifactBuild {
+                target: parse_target(target),
+                outputs: default_outputs(),
+                libs: Vec::new(),
+            },
 
-        let target = if target.eq_ignore_ascii_case("auto") {
-            Build::Auto
-        } else {
-            pattern_from_string(target)
-        };
+            EvaValue::Map(map) => {
+                let target = match map.get("target") {
+                    EvaValue::String(t) => parse_target(t),
+                    EvaValue::Nil => Build::Auto,
+                    _ => return Err(format!("The `target` field in artifact {n} must be a string.")),
+                };
 
-        let EvaValue::List(outputs) = map.get("outputs") else {
-            return Err(format!("The `outputs` field in artifact {} must be a list.", i + 1));
-        };
+                let outputs = match map.get("outputs") {
+                    EvaValue::Nil => default_outputs(),
+                    other => parse_outputs(other, n as usize)?,
+                };
 
-        let mut formats = Vec::new();
-        for j in 0..outputs.len() {
-            let EvaValue::String(output) = outputs.get(j) else {
-                return Err(format!("The {}th output in artifact {} must be a string.", j + 1, i + 1));
-            };
+                let libs = match map.get("libs") {
+                    EvaValue::Nil => Vec::new(),
+                    other => parse_libs(other, n as usize)?,
+                };
 
-            if !matches!(output.as_str(), "native-bin" | "static-archive" | "shared-object") {
-                return Err(format!("Unknown output format `{output}`."));
+                ArtifactBuild { target, outputs, libs }
             }
 
-            formats.push(output);
-        }
+            _ => return Err(format!("The {n}th artifact entry must be a string or a map.")),
+        };
 
-        if formats.is_empty() {
-            return Err(format!("Artifact {} has no output formats.", i + 1));
-        }
-
-        patterns.push(ArtifactBuild { target, outputs: formats });
+        patterns.push(artifact);
     }
 
     Ok(patterns)
 }
 
 command_fn!(build(args) {
-    mcu:       String    = "extra-mcu",
-    target:    String    = "target",
-    constexpr: String    = "constexpr",
-    entry:     String    = "main",
+    mcu:           String = "extra-mcu",
+    target:        String = "target",
+    constexpr:     String = "constexpr",
+    entry:         String = "main",
+    libs:          String = "libs",
+    output_format: String = "output-format",
     @bool morgana_bypass = "mw",
 } => {
     let Ok(current_dir) = env::current_dir() else {
@@ -254,11 +387,41 @@ command_fn!(build(args) {
         }
     }
 
-    let jobs: Vec<(Build, String)> = artifacts
+    if let Some(formats) = output_format {
+        let outputs = match parse_outputs_arg(&formats) {
+            Ok(x) => x,
+            Err(e) => {
+                CompilerOutputs::fatal(e);
+                unreachable!()
+            }
+        };
+
+        for artifact in &mut artifacts {
+            artifact.outputs = outputs.clone();
+        }
+    }
+
+    if let Some(libs) = libs {
+        let libs = match parse_libs_arg(&libs) {
+            Ok(x) => x,
+            Err(e) => {
+                CompilerOutputs::fatal(e);
+                unreachable!()
+            }
+        };
+
+        for artifact in &mut artifacts {
+            artifact.libs = libs.clone();
+        }
+    }
+
+    let jobs: Vec<(Build, String, Vec<Lib>)> = artifacts
         .into_iter()
         .flat_map(|artifact| {
-            artifact.outputs.into_iter()
-                .map(move |format| (artifact.target.clone(), format))
+            let ArtifactBuild { target, outputs, libs } = artifact;
+
+            outputs.into_iter()
+                .map(move |format| (target.clone(), format, libs.clone()))
         })
         .collect();
 
@@ -283,7 +446,7 @@ command_fn!(build(args) {
 
     let output_width = jobs
         .iter()
-        .map(|(_, output)| output.len())
+        .map(|(_, output, _)| output.len())
         .max()
         .unwrap_or(0);
 
@@ -292,7 +455,7 @@ command_fn!(build(args) {
     let mut threads = Vec::new();
     let mut owners = Vec::new();
 
-    for (index, (build, output_format)) in jobs.iter().enumerate() {
+    for (index, (build, output_format, libs)) in jobs.iter().enumerate() {
         let mut symbols = Symbols::new();
         symbols.push_scope();
         charsert::append(&mut symbols);
@@ -370,6 +533,12 @@ command_fn!(build(args) {
         let build_target = build_target.clone();
         let sake = sake.clone();
 
+        let libs_arg = libs
+            .iter()
+            .map(Lib::to_arg)
+            .collect::<Vec<_>>()
+            .join(",");
+
         let extra = {
             if let Some(m) = &mcu {
                 m.clone()
@@ -402,6 +571,7 @@ command_fn!(build(args) {
                 .arg(&sake)
                 .arg(&extra)
                 .arg(&output_format)
+                .arg(&libs_arg)
                 .output();
 
             let _ = fs::remove_file(&morgana_temp);
@@ -569,13 +739,15 @@ pub const BUILD: Command = command! {
     name: "build",
     description: "Compile your project",
     since: FIRST_VERSION_EVER,
-    example: "carla build -t xtensa_lx7 -M esp32",
+    example: "carla build -t xtensa_lx7 -M esp32 -o native_bin",
     flags: {
         Evaluated("constexpr", "C") => "Lua Defines file",
         Evaluated("main", "m") => "Entrypoint file",
 
-        Evaluated("extra-mcu", "M") => "Board name",
+        Evaluated("mcu", "M") => "Board name",
         Evaluated("target", "t") => "Output architecture/os",
+        Evaluated("output-format", "o") => "Output formats, comma separated (overrides target.eva)",
+        Evaluated("libs", "l") => "Libs as <kind>:<name>, comma separated (overrides target.eva)",
     },
     function: build,
 };

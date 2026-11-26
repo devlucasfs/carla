@@ -2,21 +2,14 @@ use crate::{
     compiler::scanner::{
         BinOP::{
             Different, Equals, Greater, GreaterEqual, IterConcat, IterConcatEq, Less, LessEqual,
-        },
-        BitOp::{AND, LSH, NOT, OR, RSH, XOR},
-        Keywords::{
-            As, Break, Const, Constexpr, Continue, Defer, Else, Extend, Extern, Fn, For, If, Let,
-            Mut, Reg, RegOk, Return, Syscall, Unfold, Using, Var, While,
-        },
-        MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star},
-        PBB::{Brace, Bracket, Paren},
-        TokenKind::{
+        }, BitOp::{AND, LSH, NOT, OR, RSH, XOR}, Keywords::{
+            As, Break, Const, Constexpr, Continue, Defer, Else, Export, Extend, Extern, Fn, For, If, Let, Mut, Reg, RegOk, Return, Syscall, Unfold, Using, Var, While,
+        }, MathOp::{IntDiv, Minus, Mod, Plus, Slash, Star}, PBB::{Brace, Bracket, Paren}, TokenKind::{
             And, Arrow, Bang, BinaryLiteral, BinaryOperator, BitOperator, Bool, Close, Colon,
             Comma, CompoundAssign, Dec, Dot, DoubleColon, Float, Hexa, Identifier, Inc, Integer,
             Keyword, MathOperator, Nil, Octal, Open, Or, RunaString, Semi, Sign, Walrus, Wild,
         },
-    },
-    utils::compiler_outputs::CompilerOutputs,
+    }, utils::compiler_outputs::CompilerOutputs,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +28,7 @@ pub enum Keywords {
     Syscall,
     Defer,
     Extern,
+    Export,
     For,
     Fn,
     While,
@@ -174,6 +168,7 @@ fn is_keyword(identifier: &str) -> Option<Keywords> {
         "extern" => Some(Extern),
         "syscall!" => Some(Syscall),
         "extend" => Some(Extend),
+        "export" => Some(Export),
         "unfold" => Some(Unfold),
         "while" => Some(While),
         "using" | "ns_using" => Some(Using),

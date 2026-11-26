@@ -3,7 +3,7 @@ use colorize::AnsiColor;
 use crate::{
     compiler::{
         iterator::ContextIterator, node::Node, scanner::{
-            Keywords::{Break, Constexpr, Continue, Defer, Extend, Extern, Fn, For, If, Let, Return, Unfold, Using, While}, Token, TokenKind::{Identifier, Keyword},
+            Keywords::{Break, Constexpr, Continue, Defer, Export, Extend, Extern, Fn, For, If, Let, Return, Unfold, Using, While}, Token, TokenKind::{Identifier, Keyword},
         }, symbols::Symbols,
     }, utils::compiler_outputs::CompilerOutputs,
 };
@@ -22,6 +22,7 @@ pub mod expressions;
 pub mod extend;
 pub mod r#extern;
 pub mod lambda;
+pub mod export;
 pub mod types;
 pub mod reg;
 pub mod ret;
@@ -84,6 +85,15 @@ pub fn handler(
     }
 
     match token.kind {
+        Keyword(Export) => {
+            try_pattern!(
+                iterator,
+                errors,
+                "Exports",
+                export::work(token, syms, iterator)
+            );
+        }
+
         Keyword(Constexpr) => {
             try_pattern!(
                 iterator,

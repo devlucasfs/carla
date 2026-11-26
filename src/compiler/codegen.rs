@@ -5,34 +5,18 @@ use crate::{
         node::Node::{
             self, Declaration, Declare, Expression, Extension, Function, Nop, STMTDefer,
             STMTReturn, STMTReturnTuple, Unfoldable,
-        },
-        patterns::{
-            assign::{Assign, Target},
-            binding::Binding,
-            conditional::Conditional,
-            expressions::{
-                register_signature, BinOp, Compiled, Expr, Operand, Step, StepOp,
-            },
-            r#extern::Extern,
-            for_loop::ForLoop,
-            incdec::IncDec,
-            lambda::LambdaRunner,
-            reg::{Loc, Slice},
-            types::CarlaType,
-            unfold::Unfold,
-            while_loop::WhileLoop,
-        },
-        symbols::{
+        }, patterns::{
+            assign::{Assign, Target}, binding::Binding, conditional::Conditional, expressions::{
+                BinOp, Compiled, Expr, Operand, Step, StepOp, register_signature,
+            }, r#extern::Extern, for_loop::ForLoop, incdec::IncDec, lambda::LambdaRunner, reg::{Loc, Slice}, types::CarlaType, unfold::Unfold, while_loop::WhileLoop,
+        }, symbols::{
             Symbol::{ExternFunction, UnfoldFunction, Variable},
             Symbols,
-        },
-        visitor,
-    },
-    morgana::{
+        }, visitor,
+    }, morgana::{
         self, MorganaContext, MorganaExpr, MorganaGenerator,
         MorganaType::{self, Void},
-    },
-    utils::{compiler_outputs::CompilerOutputs, uuid},
+    }, utils::{compiler_outputs::CompilerOutputs, uuid},
 };
 
 #[derive(Debug, Clone, Default)]
@@ -534,6 +518,7 @@ impl Codegen {
             match (self.nodes.remove(0), self.nodes.clone().first()) {
                 (Nop, _) => {}
 
+                (Node::Export, _) => self.emit("export"),
                 (STMTDefer(expr), _) => defers.push(expr),
 
                 (Declaration(decl), Some(Function(func))) => {
