@@ -14,6 +14,7 @@ use crate::{
 };
 
 pub mod install;
+pub mod update;
 const BRANCHES: [&str; 2] = ["main", "master"];
 
 #[derive(Debug, Clone, PartialEq)]
