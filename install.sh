@@ -21,7 +21,7 @@ INSTALL_TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
 
 INSTALL_BASE="${HOME}/.carla"
 INSTALL_BIN="${INSTALL_BASE}/bin"
-INSTALL_STD="${INSTALL_BASE}/std"
+INSTALL_STD="${INSTALL_BASE}/libs"
 INSTALL_EXTENSORS="${INSTALL_BASE}/extensors"
 
 REPO_CNORN="https://github.com/devlucasfs/cnorn.git"
@@ -77,7 +77,7 @@ detect_package_manager() {
 
 check_commands() {
     # command -> hint shown to the user
-    local required=(git g++ cargo go ocamlc perl)
+    local required=(git g++ gcc cargo go ocamlc perl)
     local missing=()
 
     for cmd in "${required[@]}"; do
@@ -425,17 +425,17 @@ Usage: $0 [-h|--help]
 Builds and installs the Carla toolchain into ${INSTALL_BASE}.
 
 Required tools:
-  git, g++, rust/cargo, golang, ocaml (ocamlc), perl
+  git, gcc, g++, rust/cargo, golang, ocaml (ocamlc), perl
 
 Components (in install order):
   cnorn    OCaml      -> ~/.carla/bin/cnorn
+  samar    perl       -> ~/.carla/bin/libsamar.so
   eva      Rust       -> ~/.carla/bin/libeva.so
   runa     Rust       -> ~/.carla/bin/libruna.so
-  samar    perl       -> ~/.carla/bin/libsamar.so
   morgana  perl       -> ~/.carla/bin/libmorgana.so (+ ~/.carla/Basic)
   carla    Rust       -> ~/.carla/bin/carla
   norn     Go         -> ~/.carla/bin/norn
-  std                 -> ~/.carla/std
+  std                 -> ~/.carla/libs
 EOF
 }
 
@@ -481,12 +481,12 @@ EOF
     export DYLD_LIBRARY_PATH="${INSTALL_BIN}:${DYLD_LIBRARY_PATH:-}"
 
     install_cnorn                         || exit 1   # required by Morgana
-    install_rust_lib "eva"  "$REPO_EVA"   || exit 1   # required by Samar
-    install_rust_lib "runa" "$REPO_RUNA"  || exit 1
     install_samar                         || exit 1   # required by Morgana
+    install_rust_lib "eva"  "$REPO_EVA"   || exit 1   # required by Carla
+    install_rust_lib "runa" "$REPO_RUNA"  || exit 1   # reqiored by Carla
     install_morgana                       || exit 1
     install_carla                         || exit 1
-    install_norn                          || exit 1
+    install_norn                          || exit 1   # required by Carla (runtime)
     install_std                           || exit 1
 
     add_to_path "$INSTALL_BIN"
